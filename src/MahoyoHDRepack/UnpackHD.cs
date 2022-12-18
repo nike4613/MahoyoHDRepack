@@ -3,6 +3,7 @@ using System.IO;
 using System.Threading.Tasks;
 using LibHac;
 using LibHac.Common;
+using LibHac.Fs.Fsa;
 using LibHac.Tools.Fs;
 using LibHac.Tools.FsSystem;
 using Ryujinx.HLE.FileSystem;
@@ -46,6 +47,9 @@ internal static class UnpackHD
         {
             Console.WriteLine(file.FullPath);
         }
+
+        using var cgPartsFile = new UniqueRef<IFile>();
+        fs.OpenFile(ref cgPartsFile.Ref(), "/CG_PARTS.NXZ".ToU8Span(), LibHac.Fs.OpenMode.Read).ThrowIfFailure();
 
         return Task.FromResult(0); ;
     }

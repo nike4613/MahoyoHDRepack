@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Immutable;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -262,8 +263,8 @@ namespace MahoyoHDRepack
             if (result.IsFailure()) return result.Miss();
 
             var pathStr = copy.GetString()[0..copy.GetLength()];
-            Helpers.DAssert(pathStr[0] == '/');
-            pathStr = pathStr[1..];
+            if (pathStr[0] == '/')
+                pathStr = pathStr[1..];
 
             if (pathStr.Contains((byte)'/'))
             {
@@ -336,7 +337,7 @@ namespace MahoyoHDRepack
                 }
 
                 var endOffs = offset + destination.Length;
-                endOffs = Math.Clamp(endOffs, 0, endOffs);
+                endOffs = Math.Clamp(endOffs, 0, entry.Size);
                 destination = destination.Slice(0, (int)(endOffs - offset));
 
                 if (destination.Length is 0)
@@ -353,6 +354,8 @@ namespace MahoyoHDRepack
             protected override Result DoWrite(long offset, ReadOnlySpan<byte> source, in WriteOption option) => throw new NotSupportedException();
         }
 
+        private readonly ConcurrentDictionary<int, IFile> filesCache = new();
+
         // TODO: auto-decompress NXCX and NXGX
 
         protected override Result DoOpenFile(ref UniqueRef<IFile> outFile, in Path path, OpenMode mode)
@@ -365,8 +368,14 @@ namespace MahoyoHDRepack
             var result = GetIndex(path, out var idx);
             if (result.IsFailure()) return result.Miss();
 
+            if (filesCache.TryGetValue(idx, out var file))
+            {
+                outFile.Get = file;
+                return Result.Success;
+            }
+
             var entry = files.Span[idx];
-            outFile.Get = new MrgFile(mrg, entry);
+            outFile.Get = filesCache.GetOrAdd(idx, NxxFile.TryCreate(new MrgFile(mrg, entry)));
             return Result.Success;
         }
 

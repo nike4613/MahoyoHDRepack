@@ -6,4 +6,8 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="$(MMExternalPath)Ryujinx\Ryujinx.HLE\Ryujinx.HLE.csproj" />
+  </ItemGroup>
+  
 </Project>

@@ -37,13 +37,13 @@ namespace MahoyoHDRepack
 
             public int CompareTo(Name other)
             {
-                var res = Helpers.BEToHost(w0).CompareTo(Helpers.BEToHost(other.w0));
+                var res = Utils.BEToHost(w0).CompareTo(Utils.BEToHost(other.w0));
                 if (res is not 0) return res;
-                res = Helpers.BEToHost(w1).CompareTo(Helpers.BEToHost(other.w1));
+                res = Utils.BEToHost(w1).CompareTo(Utils.BEToHost(other.w1));
                 if (res is not 0) return res;
-                res = Helpers.BEToHost(w2).CompareTo(Helpers.BEToHost(other.w2));
+                res = Utils.BEToHost(w2).CompareTo(Utils.BEToHost(other.w2));
                 if (res is not 0) return res;
-                return Helpers.BEToHost(w3).CompareTo(Helpers.BEToHost(other.w3));
+                return Utils.BEToHost(w3).CompareTo(Utils.BEToHost(other.w3));
             }
 
             public static Name Create(ReadOnlySpan<byte> name)
@@ -151,7 +151,7 @@ namespace MahoyoHDRepack
                         return new Result(256, 10);
                     }
 
-                    var offset = Helpers.LEToHost(MemoryMarshal.Read<uint>(readBuf));
+                    var offset = MemoryMarshal.Read<LEInt32>(readBuf).Value;
                     if (offset == uint.MaxValue)
                     {
                         // end of file
@@ -160,7 +160,7 @@ namespace MahoyoHDRepack
 
                     offset *= SectorSize;
 
-                    var size = SectorSize * Helpers.LEToHost(MemoryMarshal.Read<ushort>(readBuf[4..]));
+                    var size = SectorSize * MemoryMarshal.Read<LEInt16>(readBuf[4..]).Value;
 
                     entries[i] = new(offset, size);
                 }

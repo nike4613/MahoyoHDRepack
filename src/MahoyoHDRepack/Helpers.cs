@@ -46,52 +46,6 @@ public static class Helpers
         throw new ArgumentNullException(argName);
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static byte LEToHost(byte x) => x;
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static ushort LEToHost(ushort x)
-        => BitConverter.IsLittleEndian ? x : (ushort)BitPermuteStepSimple(x, 0x00ff00ff, 8);
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static uint LEToHost(uint x)
-        => BitConverter.IsLittleEndian ? x
-            : BitOperations.RotateLeft(x & 0xff00ff00, 1 * 8)
-            | BitOperations.RotateLeft(x & 0x00ff00ff, 3 * 8);
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static ulong LEToHost(ulong x)
-        => BitConverter.IsLittleEndian ? x
-            : BitOperations.RotateLeft(x & 0xff000000_ff000000, 1 * 8)
-            | BitOperations.RotateLeft(x & 0x00ff0000_00ff0000, 3 * 8)
-            | BitOperations.RotateLeft(x & 0x0000ff00_0000ff00, 5 * 8)
-            | BitOperations.RotateLeft(x & 0x000000ff_000000ff, 7 * 8);
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static byte BEToHost(byte x) => x;
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static ushort BEToHost(ushort x)
-        => !BitConverter.IsLittleEndian ? x : (ushort)BitPermuteStepSimple(x, 0x00ff00ff, 8);
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static uint BEToHost(uint x)
-        => !BitConverter.IsLittleEndian ? x
-            : BitOperations.RotateLeft(x & 0xff00ff00, 1 * 8)
-            | BitOperations.RotateLeft(x & 0x00ff00ff, 3 * 8);
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static ulong BEToHost(ulong x)
-        => !BitConverter.IsLittleEndian ? x
-            : BitOperations.RotateLeft(x & 0xff000000_ff000000, 1 * 8)
-            | BitOperations.RotateLeft(x & 0x00ff0000_00ff0000, 3 * 8)
-            | BitOperations.RotateLeft(x & 0x0000ff00_0000ff00, 5 * 8)
-            | BitOperations.RotateLeft(x & 0x000000ff_000000ff, 7 * 8);
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static uint BitPermuteStepSimple(uint x, uint m, int shift)
-        => ((x & m) << shift) | ((x >> shift) & m);
-
     public static T EventAdd<T>(ref T? evt, T del) where T : Delegate
     {
         T? orig;

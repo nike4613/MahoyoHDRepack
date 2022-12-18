@@ -63,17 +63,26 @@ namespace MahoyoHDRepack
         }
 
         private readonly IFile mrg;
+        private readonly IFile hed;
+        private readonly IFile? nam;
         private readonly ReadOnlyMemory<HedEntry> files;
         private readonly ReadOnlyMemory<Name> names;
 
-        private MrgFileSystem(IFile mrg, ReadOnlyMemory<HedEntry> files, ReadOnlyMemory<Name> names)
+        private MrgFileSystem(IFile mrg, IFile hed, IFile? nam, ReadOnlyMemory<HedEntry> files, ReadOnlyMemory<Name> names)
         {
             this.mrg = mrg;
+            this.hed = hed;
+            this.nam = nam;
             this.files = files;
             this.names = names;
         }
 
-        public override void Dispose() => mrg.Dispose();
+        public override void Dispose()
+        {
+            mrg.Dispose();
+            hed.Dispose();
+            nam?.Dispose();
+        }
 
         public static Result Read(IFileSystem fs, in Path path, out MrgFileSystem? mrgFs)
         {
@@ -194,7 +203,7 @@ namespace MahoyoHDRepack
                 names.Span.Sort(hedEntries.Span);
             }
 
-            mrgFs = new(uniqMrgFile.Release(), hedEntries, names);
+            mrgFs = new(uniqMrgFile.Release(), uniqHedFile.Release(), uniqNamFile.Release(), hedEntries, names);
             return Result.Success;
         }
 
@@ -212,57 +221,14 @@ namespace MahoyoHDRepack
             return Result.Success;
         }
 
-        private static Result ParseU8(ReadOnlySpan<byte> str, out int res)
-        {
-            res = 0;
-
-            var val = 0;
-            for (var i = 0; i < str.Length; i++)
-            {
-                val *= 10;
-                var c = str[i];
-                if (c is >= (byte)'0' and <= (byte)'9')
-                {
-                    val += c - '0';
-                }
-                else if (c is >= (byte)'a' and <= (byte)'f')
-                {
-                    val += c - 'a' + 10;
-                }
-                else if (c is >= (byte)'A' and <= (byte)'A')
-                {
-                    val += c - 'A' + 10;
-                }
-                else
-                {
-                    // invalid character
-                    return new Result(256, 5);
-                }
-            }
-
-            res = val;
-            return Result.Success;
-        }
-
-        private static Result Normalize(in Path path, out Path copy)
-        {
-            copy = default;
-            var result = copy.Initialize(path);
-            if (result.IsFailure()) return result.Miss();
-
-            result = copy.Normalize(default);
-            if (result.IsFailure()) return result.Miss();
-
-            return Result.Success;
-        }
 
         private Result GetIndex(in Path path, out int res)
         {
             Unsafe.SkipInit(out res);
-            var result = Normalize(path, out var copy);
+            var result = Utils.Normalize(path, out var copy);
             if (result.IsFailure()) return result.Miss();
 
-            var pathStr = copy.GetString()[0..copy.GetLength()];
+            var pathStr = copy.AsSpan();
             if (pathStr[0] == '/')
                 pathStr = pathStr[1..];
 
@@ -275,7 +241,7 @@ namespace MahoyoHDRepack
             if (names.IsEmpty)
             {
                 // no names, parse an integer
-                result = ParseU8(pathStr, out res);
+                result = Utils.ParseHexFromU8(pathStr, out res);
                 if (result.IsFailure()) return result.Miss();
 
                 if (res < 0 || res >= files.Length)
@@ -382,10 +348,10 @@ namespace MahoyoHDRepack
 
         protected override Result DoOpenDirectory(ref UniqueRef<IDirectory> outDirectory, in Path path, OpenDirectoryMode mode)
         {
-            var result = Normalize(path, out var copy);
+            var result = Utils.Normalize(path, out var copy);
             if (result.IsFailure()) return result.Miss();
 
-            var pathStr = copy.GetString()[0..copy.GetLength()];
+            var pathStr = copy.AsSpan();
             if (pathStr.Length is not 1 || pathStr[0] is not (byte)'/')
             {
                 return new Result(256, 7);

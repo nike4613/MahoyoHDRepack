@@ -11,8 +11,10 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "tools", "tools\tools.csproj
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{556B2C47-F83E-4A5A-977D-4748CFB52AC0}"
 	ProjectSection(SolutionItems) = preProject
+		.editorconfig = .editorconfig
 		Directory.Build.props = Directory.Build.props
 		Directory.Build.targets = Directory.Build.targets
+		README.md = README.md
 	EndProjectSection
 EndProject
 Global
@@ -36,5 +38,8 @@ Global
 	GlobalSection(NestedProjects) = preSolution
 		{BCE99836-7C93-44E4-9CE7-10359F7AEADA} = {3EC0C52A-0303-4A25-9F40-99D55BE8E85D}
 		{A3BFE317-D30B-4E7D-9EFB-3D65250C0D5D} = {556B2C47-F83E-4A5A-977D-4748CFB52AC0}
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {20207608-C08A-4C49-A03D-24862E0C0A29}
 	EndGlobalSection
 EndGlobal

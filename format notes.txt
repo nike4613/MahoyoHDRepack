@@ -1,0 +1,36 @@
+romfs/
+- allpac{,hd}ml <- MRG archive containing chapter title images (and some MZP archives with unknown content)
+- allscr.mrg <- MZP archive containing game script
+	- 0 <- names of the script files (32-byte chunks, zero padded
+	- 1 <- MZP archive containing label offsets for scripts (index is script index)
+	- 2 <- MZP archive with unknown (empty?) content
+	- 3... <- MXZ compressed script text. 3 corresponds with script index 0 in names and label offsets
+		- commands:
+			- _RTM_() returns to previous
+			- _IF__(var, op, val, label) conditionally jumps to a label
+			- _ZYxxxxx(label) marks a label
+			- _SCH2(?,img,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) displays an images
+			- _END_() marks the end of the script
+			- _JUMP(number) jumps to a different script
+				- for script ID 1, this seems to be encoded as 201?
+			- _WKST(var,op,val) performs an operation on a variable
+				- op = "eq" stores val to the var
+			- _ZZxxxxx() marks the start of the script?
+			- _ZZxxxxx(name) marks the start label of the script?
+			- _ZMxxxxx(textspec) displays text (textspec has odd grammar, but $xxxxxx refers to the index of the text in script_text)
+- allui <- MRG archive containing UI graphics
+- jallpac{,hd} <- MRG archive containing graphics for the game
+	- NXZ files are in fact BNTX images
+- parts <- MRG archive containing startup messages (TM logo, JP warning text. This might not actually be used in the Switch release.)
+- script_text.mrg <- MZP archive containing script text
+	- the sections come in pairs here
+		- the first section in each pair is a list of 4-byte begin and end offsets for each line of text
+		- the second section contains the actual text
+	- the languages are in the following order:
+		- JP
+		- EN
+		- CK
+		- CK2
+		- null
+			- the null language just has U+3000 as each line of text
+- witch.bfsar <- BFSAR archive containing audio (https://mk8.tockdom.com/wiki/BFSAR_(File_Format))

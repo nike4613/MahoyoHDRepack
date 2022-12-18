@@ -115,20 +115,8 @@ namespace MahoyoHDRepack
         {
             Unsafe.SkipInit(out bytesRead);
 
-            if (offset < 0)
-            {
-                return new Result(257, 0);
-            }
-
-            var endOffs = offset + destination.Length;
-            endOffs = Math.Clamp(endOffs, 0, length);
-            bytesRead = endOffs - offset;
-            destination = destination.Slice(0, (int)(endOffs - offset));
-
-            if (destination.Length is 0)
-            {
-                return new Result(257, 0);
-            }
+            var result = IStorage.CheckAccessRange(offset, destination.Length, length);
+            if (result.IsFailure()) return result;
 
             EnsureOffsetInBuffer(offset + destination.Length - 1);
             buffer.GetBuffer().AsSpan().Slice((int)offset, destination.Length).CopyTo(destination);

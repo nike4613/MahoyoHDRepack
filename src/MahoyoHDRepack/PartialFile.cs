@@ -42,19 +42,8 @@ public sealed class PartialFile : IFile
     {
         Unsafe.SkipInit(out bytesRead);
 
-        if (offset < 0)
-        {
-            return new Result(257, 0);
-        }
-
-        var endOffs = offset + destination.Length;
-        endOffs = Math.Clamp(endOffs, 0, length);
-        destination = destination.Slice(0, (int)(endOffs - offset));
-
-        if (destination.Length is 0)
-        {
-            return new Result(257, 0);
-        }
+        var result = IStorage.CheckAccessRange(offset, destination.Length, length);
+        if (result.IsFailure()) return result;
 
         return file.Read(out bytesRead, this.offset + offset, destination, in option);
     }

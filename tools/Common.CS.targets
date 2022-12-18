@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project>
+
+  <!-- C#-specific targets -->
+  
+  <!-- Roslyn references -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Net.Compilers.Toolset" Version="$(RoslynVersion)" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.CodeStyle" Version="$(RoslynVersion)">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <PropertyGroup>
+    <CoreCompileDependsOn>
+      EnsureSupportedMSBuildVersion;
+      $(CoreCompileDependsOn);
+    </CoreCompileDependsOn>
+  </PropertyGroup>
+
+  <Target Name="EnsureSupportedMSBuildVersion"
+          BeforeTargets="CoreCompile"
+          Condition="'$(MSBuildRequiredVersion)' != ''">
+    <Error ContinueOnError="false" Text="MSBuild version is too old to build this project; currently $(MSBuildVersion), needs at least $(MSBuildRequiredVersion)"
+           Condition="$([MSBuild]::VersionLessThan('$(MSBuildVersion)', '$(MSBuildRequiredVersion)'))" />
+  </Target>
+
+  <ItemGroup Condition="'$(_TFMIdentifier)' == '.NETFramework'">
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+    
+</Project>

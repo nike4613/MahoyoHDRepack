@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project>
+
+  <!-- C#-specific properties -->
+  <PropertyGroup>
+    <LangVersion>preview</LangVersion> <!-- Use preview so that we have UTF-8 string literals -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Nullable>enable</Nullable> <!-- C# projects should have nullability enabled. -->
+    <WarningsAsErrors>$(WarningsAsErrors);nullable</WarningsAsErrors> <!-- Nullability warnings should be errors. -->
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+    
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    
+    <ImplicitUsings>false</ImplicitUsings>
+    
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <AnalysisMode>All</AnalysisMode>
+    <AnalysisLevel>7.0</AnalysisLevel>
+    
+    <RoslynVersion>4.4.0</RoslynVersion>
+    <MSBuildRequiredVersion>17.0.0</MSBuildRequiredVersion>
+  </PropertyGroup>
+
+  <!-- For our C# projects, we want to pull in the code analyzers -->
+  <ItemGroup>
+    <!--<PackageReference Include="Microsoft.CodeAnalysis.NetAnalyzers" Version="6.0.0">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
+    </PackageReference>-->
+    <PackageReference Include="Nullable" Version="1.3.1">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="IsExternalInit" Version="1.0.3">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+</Project>

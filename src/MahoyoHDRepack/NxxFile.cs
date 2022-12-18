@@ -16,9 +16,6 @@ namespace MahoyoHDRepack
 {
     internal sealed class NxxFile : IFile
     {
-        public static ReadOnlySpan<byte> NXCX => "NXCX"u8;
-        public static ReadOnlySpan<byte> NXGX => "NXGX"u8;
-
         public static IFile TryCreate(IFile file)
         {
             var result = file.GetSize(out var size);
@@ -31,7 +28,7 @@ namespace MahoyoHDRepack
             result = file.Read(out var bytesRead, 0, hdr);
             if (result.IsFailure() || bytesRead < HdrSize) return file;
 
-            if (hdr[0..4].SequenceEqual(NXCX))
+            if (hdr[0..4].SequenceEqual(FileScanner.NxCx))
             {
                 var len = MemoryMarshal.Read<uint>(hdr[4..]);
                 var zlen = MemoryMarshal.Read<uint>(hdr[8..]);
@@ -42,7 +39,7 @@ namespace MahoyoHDRepack
                 return new NxxFile(inflaterStream, new(), len);
             }
 
-            if (hdr[0..4].SequenceEqual(NXGX))
+            if (hdr[0..4].SequenceEqual(FileScanner.NxGx))
             {
                 var len = MemoryMarshal.Read<uint>(hdr[4..]);
                 var zlen = MemoryMarshal.Read<uint>(hdr[8..]);

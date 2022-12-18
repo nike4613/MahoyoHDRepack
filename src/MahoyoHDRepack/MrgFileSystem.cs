@@ -287,7 +287,7 @@ namespace MahoyoHDRepack
             if (result.IsFailure()) return result.Miss();
 
             var entry = files.Span[idx];
-            outFile.Get = NxxFile.TryCreate(new PartialFile(mrg, entry.Offset, entry.Size));
+            outFile.Get = FileScanner.TryGetDecompressedFile(new PartialFile(mrg, entry.Offset, entry.Size));
             return Result.Success;
         }
 

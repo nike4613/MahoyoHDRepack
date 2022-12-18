@@ -310,54 +310,6 @@ namespace MahoyoHDRepack
             return GetIndex(path, out _);
         }
 
-        private sealed class MrgFile : IFile
-        {
-            private readonly IFile mrgFile;
-            private readonly HedEntry entry;
-
-            public MrgFile(IFile mrg, HedEntry entry)
-            {
-                mrgFile = mrg;
-                this.entry = entry;
-            }
-
-            protected override Result DoGetSize(out long size)
-            {
-                size = entry.Size;
-                return Result.Success;
-            }
-
-            protected override Result DoRead(out long bytesRead, long offset, Span<byte> destination, in ReadOption option)
-            {
-                Unsafe.SkipInit(out bytesRead);
-
-                if (offset < 0)
-                {
-                    return new Result(257, 0);
-                }
-
-                var endOffs = offset + destination.Length;
-                endOffs = Math.Clamp(endOffs, 0, entry.Size);
-                destination = destination.Slice(0, (int)(endOffs - offset));
-
-                if (destination.Length is 0)
-                {
-                    return new Result(257, 0);
-                }
-
-                return mrgFile.Read(out bytesRead, entry.Offset + offset, destination, in option);
-            }
-
-            protected override Result DoFlush() => throw new NotSupportedException();
-            protected override Result DoOperateRange(Span<byte> outBuffer, OperationId operationId, long offset, long size, ReadOnlySpan<byte> inBuffer) => throw new NotSupportedException();
-            protected override Result DoSetSize(long size) => throw new NotSupportedException();
-            protected override Result DoWrite(long offset, ReadOnlySpan<byte> source, in WriteOption option) => throw new NotSupportedException();
-        }
-
-        private readonly ConcurrentDictionary<int, IFile> filesCache = new();
-
-        // TODO: auto-decompress NXCX and NXGX
-
         protected override Result DoOpenFile(ref UniqueRef<IFile> outFile, in Path path, OpenMode mode)
         {
             if (mode is not OpenMode.Read)
@@ -368,14 +320,8 @@ namespace MahoyoHDRepack
             var result = GetIndex(path, out var idx);
             if (result.IsFailure()) return result.Miss();
 
-            if (filesCache.TryGetValue(idx, out var file))
-            {
-                outFile.Get = file;
-                return Result.Success;
-            }
-
             var entry = files.Span[idx];
-            outFile.Get = filesCache.GetOrAdd(idx, NxxFile.TryCreate(new MrgFile(mrg, entry)));
+            outFile.Get = NxxFile.TryCreate(new PartialFile(mrg, entry.Offset, entry.Size));
             return Result.Success;
         }
 

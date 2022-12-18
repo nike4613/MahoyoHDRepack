@@ -51,6 +51,11 @@ internal static class UnpackHD
         using var cgPartsFile = new UniqueRef<IFile>();
         fs.OpenFile(ref cgPartsFile.Ref(), "/CG_PARTS.NXZ".ToU8Span(), LibHac.Fs.OpenMode.Read).ThrowIfFailure();
 
+        using (var outFile = File.OpenWrite("CG_PARTS"))
+        {
+            cgPartsFile.Get.AsStream(LibHac.Fs.OpenMode.Read, true).CopyTo(outFile);
+        }
+
         return Task.FromResult(0); ;
     }
 }

@@ -134,7 +134,7 @@ namespace MahoyoHDRepack
                 if (length % HedEntrySize != 0)
                 {
                     // HED file is probably wrong
-                    return new Result(256, 0);
+                    return ResultFs.InvalidFileSize.Value;
                 }
 
                 var numEntries = length / HedEntrySize;
@@ -177,7 +177,7 @@ namespace MahoyoHDRepack
                 if (length % Name.Size != 0)
                 {
                     // NAM file is the wrong size
-                    return new Result(256, 1);
+                    return ResultFs.InvalidFileSize.Value;
                 }
 
                 var numEntries = length / Name.Size;
@@ -185,7 +185,7 @@ namespace MahoyoHDRepack
                 if (numEntries < hedEntries.Length)
                 {
                     // too few NAM entries
-                    return new Result(256, 2);
+                    return ResultFs.InvalidFileSize.Value;
                 }
 
                 var entries = new Name[hedEntries.Length];
@@ -214,7 +214,7 @@ namespace MahoyoHDRepack
             if (pathStr.Length > Name.Size)
             {
                 // path too long
-                return new Result(256, 4);
+                return ResultFs.InvalidPath.Value;
             }
 
             Name.Create(ref name, pathStr);
@@ -235,7 +235,7 @@ namespace MahoyoHDRepack
             if (pathStr.Contains((byte)'/'))
             {
                 // path has directories
-                return new Result(256, 3);
+                return ResultFs.InvalidPath.Value;
             }
 
             if (names.IsEmpty)
@@ -247,7 +247,7 @@ namespace MahoyoHDRepack
                 if (res < 0 || res >= files.Length)
                 {
                     // invalid name
-                    return new Result(256, 6);
+                    return ResultFs.FileNotFound.Value;
                 }
 
                 return Result.Success;
@@ -262,7 +262,7 @@ namespace MahoyoHDRepack
                 if (idx < 0)
                 {
                     // invalid name
-                    return new Result(256, 6);
+                    return ResultFs.FileNotFound.Value;
                 }
 
                 res = idx;
@@ -280,7 +280,7 @@ namespace MahoyoHDRepack
         {
             if (mode is not OpenMode.Read)
             {
-                return new Result(256, 7);
+                return ResultFs.InvalidOperationForOpenMode.Value;
             }
 
             var result = GetIndex(path, out var idx);
@@ -354,7 +354,7 @@ namespace MahoyoHDRepack
             var pathStr = copy.AsSpan();
             if (pathStr.Length is not 1 || pathStr[0] is not (byte)'/')
             {
-                return new Result(256, 7);
+                return ResultFs.FileNotFound.Value;
             }
 
             outDirectory.Get = new MrgDirectory(this, mode);
@@ -362,14 +362,14 @@ namespace MahoyoHDRepack
         }
 
 
-        protected override Result DoCleanDirectoryRecursively(in Path path) => throw new NotSupportedException();
-        protected override Result DoCommit() => throw new NotSupportedException();
-        protected override Result DoCreateDirectory(in Path path) => throw new NotSupportedException();
-        protected override Result DoCreateFile(in Path path, long size, CreateFileOptions option) => throw new NotSupportedException();
-        protected override Result DoDeleteDirectory(in Path path) => throw new NotSupportedException();
-        protected override Result DoDeleteDirectoryRecursively(in Path path) => throw new NotSupportedException();
-        protected override Result DoDeleteFile(in Path path) => throw new NotSupportedException();
-        protected override Result DoRenameDirectory(in Path currentPath, in Path newPath) => throw new NotSupportedException();
-        protected override Result DoRenameFile(in Path currentPath, in Path newPath) => throw new NotSupportedException();
+        protected override Result DoCleanDirectoryRecursively(in Path path) => ResultFs.UnsupportedOperation.Value;
+        protected override Result DoCommit() => ResultFs.UnsupportedOperation.Value;
+        protected override Result DoCreateDirectory(in Path path) => ResultFs.UnsupportedOperation.Value;
+        protected override Result DoCreateFile(in Path path, long size, CreateFileOptions option) => ResultFs.UnsupportedOperation.Value;
+        protected override Result DoDeleteDirectory(in Path path) => ResultFs.UnsupportedOperation.Value;
+        protected override Result DoDeleteDirectoryRecursively(in Path path) => ResultFs.UnsupportedOperation.Value;
+        protected override Result DoDeleteFile(in Path path) => ResultFs.UnsupportedOperation.Value;
+        protected override Result DoRenameDirectory(in Path currentPath, in Path newPath) => ResultFs.UnsupportedOperation.Value;
+        protected override Result DoRenameFile(in Path currentPath, in Path newPath) => ResultFs.UnsupportedOperation.Value;
     }
 }

@@ -3,19 +3,15 @@ using System.IO;
 using System.Threading.Tasks;
 using LibHac;
 using LibHac.Common;
-using LibHac.Fs.Fsa;
-using LibHac.FsSystem;
 using LibHac.Tools.Fs;
 using LibHac.Tools.FsSystem;
-using LibHac.Tools.FsSystem.NcaUtils;
 using Ryujinx.HLE.FileSystem;
-using Ryujinx.HLE.HOS;
 
 namespace MahoyoHDRepack;
 
 internal static class UnpackHD
 {
-    public static async Task<int> Run(
+    public static Task<int> Run(
         string? ryuBase,
         FileInfo xciFile)
     {
@@ -23,7 +19,7 @@ internal static class UnpackHD
         Ryujinx.Common.Configuration.AppDataManager.Initialize(ryuBase);
 
         var horizonConfig = new HorizonConfiguration();
-        var horizon = new LibHac.Horizon(horizonConfig);
+        var horizon = new Horizon(horizonConfig);
         var horizonClient = horizon.CreateHorizonClient();
         var vfs = VirtualFileSystem.CreateInstance();
 
@@ -40,7 +36,17 @@ internal static class UnpackHD
             Console.WriteLine(file.FullPath);
         }
 
+        LibHac.Fs.Path path = default;
+        path.InitializeWithNormalization("/allui"u8).ThrowIfFailure();
 
-        return 0;
+        MrgFileSystem.Read(romfs, path, out var fs).ThrowIfFailure();
+        Helpers.Assert(fs is not null);
+
+        foreach (var file in fs.EnumerateEntries())
+        {
+            Console.WriteLine(file.FullPath);
+        }
+
+        return Task.FromResult(0); ;
     }
 }

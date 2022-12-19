@@ -32,10 +32,10 @@ internal static class UnpackHD
 
         // we've now mounted the ROMFS and have access to the files inside
 
-        foreach (var file in romfs.EnumerateEntries())
+        /*foreach (var file in romfs.EnumerateEntries())
         {
             Console.WriteLine(file.FullPath);
-        }
+        }*/
 
         LibHac.Fs.Path path = default;
         path.InitializeWithNormalization("/allui"u8).ThrowIfFailure();
@@ -43,9 +43,28 @@ internal static class UnpackHD
         MrgFileSystem.Read(romfs, path, out var fs).ThrowIfFailure();
         Helpers.Assert(fs is not null);
 
-        foreach (var file in fs.EnumerateEntries())
+        /*foreach (var file in fs.EnumerateEntries())
         {
             Console.WriteLine(file.FullPath);
+        }*/
+
+        using var scriptTextFile = new UniqueRef<IFile>();
+        romfs.OpenFile(ref scriptTextFile.Ref(), "/script_text.mrg".ToU8Span(), LibHac.Fs.OpenMode.Read).ThrowIfFailure();
+        using var uniqZpfs = new UniqueRef<IFileSystem>();
+        MzpFileSystem.Read(ref uniqZpfs.Ref(), scriptTextFile.Release().AsStorage()).ThrowIfFailure();
+        using var zpfs = uniqZpfs.Release();
+
+        foreach (var file in zpfs.EnumerateEntries())
+        {
+            Console.WriteLine(file.FullPath);
+        }
+
+        using var dat0file = new UniqueRef<IFile>();
+        zpfs.OpenFile(ref dat0file.Ref(), "/0".ToU8Span(), LibHac.Fs.OpenMode.Read).ThrowIfFailure();
+
+        using (var outFile = File.OpenWrite("script_text.mrg.0"))
+        {
+            dat0file.Get.AsStream(LibHac.Fs.OpenMode.Read, true).CopyTo(outFile);
         }
 
         using var cgPartsFile = new UniqueRef<IFile>();

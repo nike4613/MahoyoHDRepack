@@ -327,13 +327,12 @@ namespace MahoyoHDRepack
                     entry.Size = fs.files.Span[baseIdx + i].Size;
 
                     var nameSpan = entry.Name.Items;
-                    nameSpan.Fill(0);
+                    nameSpan.Clear();
 
                     if (fs.names.IsEmpty)
                     {
                         var name = (baseIdx + i).ToString("x16");
-                        var nameBytes = Encoding.UTF8.GetBytes(name);
-                        nameBytes.AsSpan().CopyTo(nameSpan);
+                        _ = Encoding.UTF8.GetBytes(name, nameSpan);
                     }
                     else
                     {

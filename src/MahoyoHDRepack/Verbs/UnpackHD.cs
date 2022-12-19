@@ -8,21 +8,16 @@ using LibHac.Tools.Fs;
 using LibHac.Tools.FsSystem;
 using Ryujinx.HLE.FileSystem;
 
-namespace MahoyoHDRepack;
+namespace MahoyoHDRepack.Verbs;
 
 internal static class UnpackHD
 {
     public static Task<int> Run(
         string? ryuBase,
-        FileInfo xciFile)
+        FileInfo xciFile
+    )
     {
-        // init Ryujinx
-        Ryujinx.Common.Configuration.AppDataManager.Initialize(ryuBase);
-
-        var horizonConfig = new HorizonConfiguration();
-        var horizon = new Horizon(horizonConfig);
-        var horizonClient = horizon.CreateHorizonClient();
-        var vfs = VirtualFileSystem.CreateInstance();
+        Common.InitRyujinx(ryuBase, out var horizon, out var vfs);
 
         // attempt to mount the XCI file
         using var xciHandle = File.OpenHandle(xciFile.FullName, FileMode.Open, FileAccess.Read, FileShare.Read, FileOptions.RandomAccess);

@@ -1,0 +1,12 @@
+<Directives xmlns="http://schemas.microsoft.com/netfx/2013/01/metadata">
+  <Application>
+    <Assembly Name="System.Text.Json">
+      <Type Name="System.Text.Json.Serialization.Converters.ObjectDefaultConverter`1[[Ryujinx.Common.Configuration.TitleUpdateMetadata,Ryujinx.Common]]"
+            Dynamic="Required All" />
+    </Assembly>
+    <Assembly Name="Ryujinx.Common">
+      <Type Name="Ryujinx.Common.Configuration.TitleUpdateMetadata"
+            Dynamic="Required All" />
+    </Assembly>
+  </Application>
+</Directives>

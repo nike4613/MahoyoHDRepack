@@ -3,9 +3,22 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
 
+    <IsTrimmable>true</IsTrimmable>
     <IsPackable>false</IsPackable>
+    
+    <PublishAot>true</PublishAot>
+    <SelfContained>true</SelfContained>
+    <PublishTrimmed>true</PublishTrimmed>
+    <StripSymbols>true</StripSymbols>
+
+    <IlcGenerateCompleteTypeMetadata>true</IlcGenerateCompleteTypeMetadata>
+    <IlcOptimizationPreference>Speed</IlcOptimizationPreference>
   </PropertyGroup>
 
+  <ItemGroup>
+    <RdXmlFile Include="rd.xml" />
+  </ItemGroup>
+  
   <ItemGroup>
     <PackageReference Include="Csv" Version="2.0.93" />
     <PackageReference Include="SharpZipLib" Version="1.4.1" />

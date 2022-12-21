@@ -232,9 +232,9 @@ public sealed class MzpFileSystem : IFileSystem
             ref var entry = ref entries[i];
 
             // first, we want to update the size to the real size in CowStorage
-            if (entry.CowStorage is not null)
+            if (entry.Cow is { HasWritten: true })
             {
-                entry.NewSize = (uint)entry.CowStorage.Size;
+                entry.NewSize = (uint)entry.CowStorage!.Size;
             }
             else
             {
@@ -242,6 +242,8 @@ public sealed class MzpFileSystem : IFileSystem
             }
 
             // then, we want to set the offset
+            // we want to align files to 16-byte offsets
+            offset = (offset + 15u) & ~0xfu;
             entry.NewOffset = offset;
             // then update the offset correctly
             offset += entry.NewSize;
@@ -261,7 +263,7 @@ public sealed class MzpFileSystem : IFileSystem
             for (var i = entries.Length - 1; i >= 0; i--)
             {
                 ref var entry = ref entries[i];
-                if (entry.CowStorage is null or { Size: 0 })
+                if (entry.Cow is null or { HasWritten: false })
                 {
                     Helpers.Assert(entry.Size == entry.NewSize);
                     // this entry hasn't changed, do the copy
@@ -276,7 +278,7 @@ public sealed class MzpFileSystem : IFileSystem
             for (var i = 0; i < entries.Length; i++)
             {
                 ref var entry = ref entries[i];
-                if (entry.CowStorage is null or { Size: 0 })
+                if (entry.Cow is null or { HasWritten: false })
                 {
                     Helpers.Assert(entry.Size == entry.NewSize);
                     // this entry hasn't changed, do the copy
@@ -295,7 +297,7 @@ public sealed class MzpFileSystem : IFileSystem
         for (var i = 0; i < entries.Length; i++)
         {
             ref var entry = ref entries[i];
-            if (entry.CowStorage is null or { Size: 0 })
+            if (entry.Cow is null or { HasWritten: false })
             {
                 // data hasn't changed, so just move on
                 continue;
@@ -322,7 +324,7 @@ public sealed class MzpFileSystem : IFileSystem
             var mzpEntry = new MzpEntry(entry.NewSize, entry.NewOffset - fileDataOffset);
             MemoryMarshal.Write(entrySpan, ref mzpEntry);
 
-            result = storage.Write(HeaderSize + (EntrySize * i), hdrSpan);
+            result = storage.Write(HeaderSize + (EntrySize * i), entrySpan);
             if (result.IsFailure()) return result.Miss();
         }
 
@@ -343,7 +345,7 @@ public sealed class MzpFileSystem : IFileSystem
             _ = GetStorageForEntry(ref entry);
         }
 
-        return Result.Success;
+        return storage.Flush();
     }
 
     private Result MoveBlock(long fromOffs, long toOffs, long length)
@@ -400,9 +402,16 @@ public sealed class MzpFileSystem : IFileSystem
                 result = storage.Write(writeHead, span);
                 if (result.IsFailure()) return result.Miss();
 
-                readSize = BlockSize;
-                readHead += BlockSize * direction;
-                writeHead += BlockSize * direction;
+                if (direction < 0)
+                {
+                    readSize = BlockSize;
+                }
+                readHead += readSize * direction;
+                writeHead += readSize * direction;
+                if (direction > 0)
+                {
+                    readSize = BlockSize;
+                }
             }
             while (readHead >= fromOffs && readHead < fromOffs + length);
         }

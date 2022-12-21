@@ -17,7 +17,7 @@ namespace MahoyoHDRepack.ScriptText
             Unsafe.SkipInit(out boundaries);
 
             using var uniqBoundaryFile = new UniqueRef<IFile>();
-            var result = fs.OpenFile(ref uniqBoundaryFile.Ref(), ((int)lang) * 2, OpenMode.Read);
+            var result = OpenLangBoundaryFile(fs, ref uniqBoundaryFile.Ref(), lang);
             if (result.IsFailure()) return result.Miss();
 
             using var boundaryFile = new SharedRef<IFile>();
@@ -28,8 +28,11 @@ namespace MahoyoHDRepack.ScriptText
             return ParseLineBoundaries(fileStorage, out boundaries);
         }
 
-        public static Result OpenLangLineDataFile(MzpFileSystem fs, ref UniqueRef<IFile> outFile, GameLanguage lang)
-            => fs.OpenFile(ref outFile, (((int)lang) * 2) + 1, OpenMode.Read);
+        public static Result OpenLangBoundaryFile(MzpFileSystem fs, ref UniqueRef<IFile> outFile, GameLanguage lang, OpenMode mode = OpenMode.Read)
+            => fs.OpenFile(ref outFile, ((int)lang) * 2, mode);
+
+        public static Result OpenLangLineDataFile(MzpFileSystem fs, ref UniqueRef<IFile> outFile, GameLanguage lang, OpenMode mode = OpenMode.Read)
+            => fs.OpenFile(ref outFile, (((int)lang) * 2) + 1, mode);
 
         public static Result ReadLines(MzpFileSystem fs, GameLanguage lang, out string[] lines)
         {

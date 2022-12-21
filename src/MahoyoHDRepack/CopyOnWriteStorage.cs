@@ -10,7 +10,8 @@ namespace MahoyoHDRepack
     {
         private SharedRef<IStorage> readStorage;
         private SharedRef<IStorage> writeStorage;
-        private bool usingWriteStorage;
+
+        public bool HasWritten { get; private set; }
 
         public CopyOnWriteStorage(in SharedRef<IStorage> readStorage, in SharedRef<IStorage> writeStorage)
         {
@@ -26,7 +27,7 @@ namespace MahoyoHDRepack
 
         public override Result Flush()
         {
-            if (usingWriteStorage)
+            if (HasWritten)
             {
                 return writeStorage.Get.Flush();
             }
@@ -36,7 +37,7 @@ namespace MahoyoHDRepack
 
         public override Result GetSize(out long size)
         {
-            if (usingWriteStorage)
+            if (HasWritten)
             {
                 return writeStorage.Get.GetSize(out size);
             }
@@ -48,7 +49,7 @@ namespace MahoyoHDRepack
 
         public override Result Read(long offset, Span<byte> destination)
         {
-            if (usingWriteStorage)
+            if (HasWritten)
             {
                 return writeStorage.Get.Read(offset, destination);
             }
@@ -60,7 +61,7 @@ namespace MahoyoHDRepack
 
         private Result CopyIfNeeded()
         {
-            if (usingWriteStorage)
+            if (HasWritten)
             {
                 return Result.Success;
             }
@@ -94,7 +95,7 @@ namespace MahoyoHDRepack
                 ArrayPool<byte>.Shared.Return(buf);
             }
 
-            usingWriteStorage = true;
+            HasWritten = true;
 
             return Result.Success;
         }

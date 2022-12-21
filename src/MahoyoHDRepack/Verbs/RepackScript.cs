@@ -142,5 +142,8 @@ internal static class RepackScript
         }
 
         // updatedLang now contains our language lines
+
+        ScriptLineWriter.WriteLines(mzpFs, secondLang, updatedLang).ThrowIfFailure();
+        mzpFs.Flush().ThrowIfFailure();
     }
 }

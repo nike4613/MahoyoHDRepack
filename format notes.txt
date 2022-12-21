@@ -29,8 +29,11 @@ romfs/
 	- the languages are in the following order:
 		- JP
 		- EN
-		- CK
-		- CK2
-		- null
+		- ZH
+		- ZH2
+		- KO
 			- the null language just has U+3000 as each line of text
 - witch.bfsar <- BFSAR archive containing audio (https://mk8.tockdom.com/wiki/BFSAR_(File_Format))
+
+----
+

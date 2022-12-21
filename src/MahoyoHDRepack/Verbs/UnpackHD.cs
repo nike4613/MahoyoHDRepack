@@ -1,12 +1,11 @@
 ﻿using System;
 using System.IO;
 using System.Threading.Tasks;
-using LibHac;
 using LibHac.Common;
 using LibHac.Fs.Fsa;
+using LibHac.FsSystem;
 using LibHac.Tools.Fs;
 using LibHac.Tools.FsSystem;
-using Ryujinx.HLE.FileSystem;
 
 namespace MahoyoHDRepack.Verbs;
 
@@ -70,6 +69,18 @@ internal static class UnpackHD
             cgPartsFile.Get.AsStream(LibHac.Fs.OpenMode.Read, true).CopyTo(outFile);
         }
 
-        return Task.FromResult(0); ;
+        if (Directory.Exists("romfs"))
+            Directory.Delete("romfs", true);
+        using var localRomfs = new SharedRef<IFileSystem>(new LocalFileSystem("romfs"));
+        using var shromfs = new SharedRef<IFileSystem>(romfs);
+        using var woromfs = new WriteOverlayFileSystem(shromfs, localRomfs);
+
+        using var corpTgaFile = new UniqueRef<IFile>();
+        woromfs.OpenFile(ref corpTgaFile.Ref(), "/corp.tga".ToU8Span(), LibHac.Fs.OpenMode.ReadWrite).ThrowIfFailure();
+
+        corpTgaFile.Get.GetSize(out var corpTgaSize).ThrowIfFailure();
+        corpTgaFile.Get.SetSize(corpTgaSize).ThrowIfFailure();
+
+        return Task.FromResult(0);
     }
 }

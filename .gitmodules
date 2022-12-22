@@ -1,4 +1,3 @@
-[submodule "ryujinx"]
-	path = external/Ryujinx/
+[submodule "external/Ryujinx"]
+	path = external/Ryujinx
 	url = https://github.com/Ryujinx/Ryujinx.git
-	branch = master

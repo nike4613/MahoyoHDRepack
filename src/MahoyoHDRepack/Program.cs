@@ -43,6 +43,20 @@ var outDir = new Option<DirectoryInfo>(
 rootCmd.AddGlobalOption(ryuBasePath);
 
 {
+    var path = new Argument<string>("path", "The path of the file in the archive to extract");
+    var outLoc = new Argument<string>("to", "The location to write the file");
+
+    var cmd = new Command("extract", "Extracts a single file from the RomFS.")
+    {
+        xciFile, path, outLoc
+    };
+
+    var exec = ExtractFile.Run;
+    cmd.SetHandler(exec, ryuBasePath, xciFile, path, outLoc);
+    rootCmd.Add(cmd);
+}
+
+{
     var cmd = new Command("extract-script")
     {
         xciFile, language, outFile

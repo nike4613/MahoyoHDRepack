@@ -45,14 +45,16 @@ rootCmd.AddGlobalOption(ryuBasePath);
 {
     var path = new Argument<string>("path", "The path of the file in the archive to extract");
     var outLoc = new Argument<string>("to", "The location to write the file");
+    var raw = new Option<bool>("--raw", "Do not uncompress the file if it compressed");
+    var noArchive = new Option<bool>("--no-arc", "Do not treat archives as directories");
 
     var cmd = new Command("extract", "Extracts a single file from the RomFS.")
     {
-        xciFile, path, outLoc
+        xciFile, path, outLoc, raw, noArchive
     };
 
     var exec = ExtractFile.Run;
-    cmd.SetHandler(exec, ryuBasePath, xciFile, path, outLoc);
+    cmd.SetHandler(exec, ryuBasePath, xciFile, path, outLoc, raw, noArchive);
     rootCmd.Add(cmd);
 }
 

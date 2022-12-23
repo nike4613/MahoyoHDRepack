@@ -341,8 +341,11 @@ public sealed class MzpFileSystem : IFileSystem
 
             entry.Size = entry.NewSize;
             entry.Offset = entry.NewOffset;
-            // GetStorageForEntry reinitializes COW and updates fw
-            _ = GetStorageForEntry(ref entry);
+            if (cow is not null)
+            {
+                // GetStorageForEntry reinitializes COW and updates fw
+                _ = GetStorageForEntry(ref entry);
+            }
         }
 
         return storage.Flush();

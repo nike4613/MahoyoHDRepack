@@ -43,10 +43,7 @@ internal static class Utils
     public static Result Normalize(in Path path, out Path copy)
     {
         copy = default;
-        var result = copy.Initialize(path);
-        if (result.IsFailure()) return result.Miss();
-
-        result = copy.Normalize(default);
+        var result = copy.InitializeWithNormalization(path.AsSpan());
         if (result.IsFailure()) return result.Miss();
 
         return Result.Success;

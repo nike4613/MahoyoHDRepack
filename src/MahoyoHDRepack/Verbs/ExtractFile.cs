@@ -5,8 +5,8 @@ using LibHac.Common;
 using LibHac.Fs;
 using LibHac.Fs.Fsa;
 using LibHac.Tools.FsSystem;
-using Path = System.IO.Path;
 using FsPath = LibHac.Fs.Path;
+using Path = System.IO.Path;
 
 namespace MahoyoHDRepack.Verbs;
 
@@ -21,7 +21,7 @@ internal static class ExtractFile
         bool noArc
     )
     {
-        Common.InitRyujinx(ryuBase, out var horizon, out var vfs);
+        Common.InitRyujinx(ryuBase, out _, out var vfs);
 
         // attempt to mount the XCI file
         using var xciHandle = File.OpenHandle(xciFile.FullName, FileMode.Open, FileAccess.Read, FileShare.Read, FileOptions.RandomAccess);
@@ -58,7 +58,7 @@ internal static class ExtractFile
         if (noArchive)
         {
             // we don't need to search in archives
-            romfs.OpenFile(ref uniqFile.Ref, normalized, LibHac.Fs.OpenMode.Read).ThrowIfFailure();
+            romfs.OpenFile(ref uniqFile.Ref, normalized, OpenMode.Read).ThrowIfFailure();
         }
         else
         {
@@ -78,7 +78,7 @@ internal static class ExtractFile
     {
         // first thing we try is opening the file at the path directly
         Console.WriteLine("OpenFileInArchive(" + fs.GetType() + "," + System.Text.Encoding.UTF8.GetString(path.AsSpan()) + ")");
-        var result = fs.OpenFile(ref outFile, path, LibHac.Fs.OpenMode.Read);
+        var result = fs.OpenFile(ref outFile, path, OpenMode.Read);
         if (result.IsSuccess()) return result;
         Console.WriteLine($"OpenFile failed: " + result.ToStringWithName());
 
@@ -116,7 +116,7 @@ internal static class ExtractFile
 
         // at this point, we should have a functional file
         using var uniqFile = new UniqueRef<IFile>();
-        fs.OpenFile(ref uniqFile.Ref, path, LibHac.Fs.OpenMode.Read).ThrowIfFailure();
+        fs.OpenFile(ref uniqFile.Ref, path, OpenMode.Read).ThrowIfFailure();
 
         // now, we check the archive type
         var ftype = FileScanner.ProbeForFileType(uniqFile.Get);
@@ -131,6 +131,10 @@ internal static class ExtractFile
                     Utils.Normalize(inArcPath, out normalized).ThrowIfFailure();
                     return OpenFileInArchive(ref outFile, mzpFs, normalized);
                 }
+
+            case KnownFileTypes.Unknown:
+            case KnownFileTypes.Mzx:
+            case KnownFileTypes.Nxx:
             default:
                 return ResultFs.FileNotFound.Miss();
         }

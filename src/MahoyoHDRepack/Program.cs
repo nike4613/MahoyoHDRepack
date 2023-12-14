@@ -101,4 +101,4 @@ rootCmd.AddGlobalOption(ryuBasePath);
     rootCmd.Add(cmd);
 }
 
-return await rootCmd.InvokeAsync(args);
+return await rootCmd.InvokeAsync(args).ConfigureAwait(false);

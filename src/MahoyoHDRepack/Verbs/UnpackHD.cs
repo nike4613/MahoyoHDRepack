@@ -16,7 +16,7 @@ internal static class UnpackHD
         FileInfo xciFile
     )
     {
-        Common.InitRyujinx(ryuBase, out var horizon, out var vfs);
+        Common.InitRyujinx(ryuBase, out _, out var vfs);
 
         // attempt to mount the XCI file
         using var xciHandle = File.OpenHandle(xciFile.FullName, FileMode.Open, FileAccess.Read, FileShare.Read, FileOptions.RandomAccess);

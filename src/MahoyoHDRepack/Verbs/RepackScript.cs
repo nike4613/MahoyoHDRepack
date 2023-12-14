@@ -40,12 +40,12 @@ internal static class RepackScript
         using var romfs = new WriteOverlayFileSystem(rawRomfs, outRomfs);
 
         using var uniqScriptTextFile = new UniqueRef<IFile>();
-        romfs.OpenFile(ref uniqScriptTextFile.Ref(), "/script_text.mrg".ToU8Span(), LibHac.Fs.OpenMode.Read).ThrowIfFailure();
+        romfs.OpenFile(ref uniqScriptTextFile.Ref, "/script_text.mrg".ToU8Span(), LibHac.Fs.OpenMode.Read).ThrowIfFailure();
 
         Helpers.Assert(FileScanner.ProbeForFileType(uniqScriptTextFile.Get) is KnownFileTypes.Mzp, "script_text.mrg is not an mzp???");
 
         using var uniqMzpFs = new UniqueRef<MzpFileSystem>();
-        MzpFileSystem.Read(ref uniqMzpFs.Ref(), uniqScriptTextFile.Get.AsStorage()).ThrowIfFailure();
+        MzpFileSystem.Read(ref uniqMzpFs.Ref, uniqScriptTextFile.Get.AsStorage()).ThrowIfFailure();
 
         using var mzpFs = uniqMzpFs.Release();
 

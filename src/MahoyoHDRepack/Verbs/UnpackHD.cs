@@ -43,9 +43,9 @@ internal static class UnpackHD
         }*/
 
         using var scriptTextFile = new UniqueRef<IFile>();
-        romfs.OpenFile(ref scriptTextFile.Ref(), "/script_text.mrg".ToU8Span(), LibHac.Fs.OpenMode.Read).ThrowIfFailure();
+        romfs.OpenFile(ref scriptTextFile.Ref, "/script_text.mrg".ToU8Span(), LibHac.Fs.OpenMode.Read).ThrowIfFailure();
         using var uniqZpfs = new UniqueRef<IFileSystem>();
-        MzpFileSystem.Read(ref uniqZpfs.Ref(), scriptTextFile.Release().AsStorage()).ThrowIfFailure();
+        MzpFileSystem.Read(ref uniqZpfs.Ref, scriptTextFile.Release().AsStorage()).ThrowIfFailure();
         using var zpfs = uniqZpfs.Release();
 
         foreach (var file in zpfs.EnumerateEntries())
@@ -54,7 +54,7 @@ internal static class UnpackHD
         }
 
         using var dat0file = new UniqueRef<IFile>();
-        zpfs.OpenFile(ref dat0file.Ref(), "/0".ToU8Span(), LibHac.Fs.OpenMode.Read).ThrowIfFailure();
+        zpfs.OpenFile(ref dat0file.Ref, "/0".ToU8Span(), LibHac.Fs.OpenMode.Read).ThrowIfFailure();
 
         using (var outFile = File.OpenWrite("script_text.mrg.0"))
         {
@@ -62,7 +62,7 @@ internal static class UnpackHD
         }
 
         using var cgPartsFile = new UniqueRef<IFile>();
-        fs.OpenFile(ref cgPartsFile.Ref(), "/CG_PARTS.NXZ".ToU8Span(), LibHac.Fs.OpenMode.Read).ThrowIfFailure();
+        fs.OpenFile(ref cgPartsFile.Ref, "/CG_PARTS.NXZ".ToU8Span(), LibHac.Fs.OpenMode.Read).ThrowIfFailure();
 
         using (var outFile = File.OpenWrite("CG_PARTS"))
         {
@@ -76,7 +76,7 @@ internal static class UnpackHD
         using var woromfs = new WriteOverlayFileSystem(shromfs, localRomfs);
 
         using var corpTgaFile = new UniqueRef<IFile>();
-        woromfs.OpenFile(ref corpTgaFile.Ref(), "/corp.tga".ToU8Span(), LibHac.Fs.OpenMode.ReadWrite).ThrowIfFailure();
+        woromfs.OpenFile(ref corpTgaFile.Ref, "/corp.tga".ToU8Span(), LibHac.Fs.OpenMode.ReadWrite).ThrowIfFailure();
 
         corpTgaFile.Get.GetSize(out var corpTgaSize).ThrowIfFailure();
         corpTgaFile.Get.SetSize(corpTgaSize).ThrowIfFailure();

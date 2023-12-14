@@ -17,13 +17,13 @@ namespace MahoyoHDRepack.ScriptText
             Unsafe.SkipInit(out boundaries);
 
             using var uniqBoundaryFile = new UniqueRef<IFile>();
-            var result = OpenLangBoundaryFile(fs, ref uniqBoundaryFile.Ref(), lang);
+            var result = OpenLangBoundaryFile(fs, ref uniqBoundaryFile.Ref, lang);
             if (result.IsFailure()) return result.Miss();
 
             using var boundaryFile = new SharedRef<IFile>();
-            boundaryFile.Ref().Set(ref uniqBoundaryFile.Ref());
+            boundaryFile.Ref.Set(ref uniqBoundaryFile.Ref);
 
-            using var fileStorage = new FileStorage(ref boundaryFile.Ref());
+            using var fileStorage = new FileStorage(ref boundaryFile.Ref);
 
             return ParseLineBoundaries(fileStorage, out boundaries);
         }
@@ -42,7 +42,7 @@ namespace MahoyoHDRepack.ScriptText
             if (result.IsFailure()) return result.Miss();
 
             using var lineDataFile = new UniqueRef<IFile>();
-            result = OpenLangLineDataFile(fs, ref lineDataFile.Ref(), lang);
+            result = OpenLangLineDataFile(fs, ref lineDataFile.Ref, lang);
             if (result.IsFailure()) return result.Miss();
 
             result = lineDataFile.Get.GetSize(out var lineDataSize);

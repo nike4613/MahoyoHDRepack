@@ -58,20 +58,20 @@ internal static class ExtractFile
         if (noArchive)
         {
             // we don't need to search in archives
-            romfs.OpenFile(ref uniqFile.Ref(), normalized, LibHac.Fs.OpenMode.Read).ThrowIfFailure();
+            romfs.OpenFile(ref uniqFile.Ref, normalized, LibHac.Fs.OpenMode.Read).ThrowIfFailure();
         }
         else
         {
             // we want to scan child archives
-            OpenFileInArchive(ref uniqFile.Ref(), romfs, normalized).ThrowIfFailure();
+            OpenFileInArchive(ref uniqFile.Ref, romfs, normalized).ThrowIfFailure();
         }
 
         if (!raw)
         {
-            uniqFile.Get = FileScanner.TryGetDecompressedFile(uniqFile.Get);
+            uniqFile.Reset(FileScanner.TryGetDecompressedFile(uniqFile.Get));
         }
 
-        return UniqueRef<IFile>.Create(ref uniqFile.Ref());
+        return UniqueRef<IFile>.Create(ref uniqFile.Ref);
     }
 
     private static Result OpenFileInArchive(ref UniqueRef<IFile> outFile, IFileSystem fs, FsPath path)
@@ -116,7 +116,7 @@ internal static class ExtractFile
 
         // at this point, we should have a functional file
         using var uniqFile = new UniqueRef<IFile>();
-        fs.OpenFile(ref uniqFile.Ref(), path, LibHac.Fs.OpenMode.Read).ThrowIfFailure();
+        fs.OpenFile(ref uniqFile.Ref, path, LibHac.Fs.OpenMode.Read).ThrowIfFailure();
 
         // now, we check the archive type
         var ftype = FileScanner.ProbeForFileType(uniqFile.Get);
@@ -125,7 +125,7 @@ internal static class ExtractFile
             case KnownFileTypes.Mzp:
                 {
                     using var uniqFs = new UniqueRef<IFileSystem>();
-                    MzpFileSystem.Read(ref uniqFs.Ref(), uniqFile.Release().AsStorage()).ThrowIfFailure();
+                    MzpFileSystem.Read(ref uniqFs.Ref, uniqFile.Release().AsStorage()).ThrowIfFailure();
                     var mzpFs = uniqFs.Release(); // we have to release it because we need it to persist past the end of the invocation due to the scheme here
                     // oh well!
                     Utils.Normalize(inArcPath, out normalized).ThrowIfFailure();

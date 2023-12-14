@@ -196,7 +196,7 @@ namespace MahoyoHDRepack
                 if (result.IsFailure()) return result.Miss();
 
                 // once we've created that file, we'll open the file
-                result = fs.writeFs.Get.OpenFile(ref writeFile.Ref(), path, mode | OpenMode.Write);
+                result = fs.writeFs.Get.OpenFile(ref writeFile.Ref, path, mode | OpenMode.Write);
                 if (result.IsFailure()) return result.Miss();
 
                 // and now we go and copy from the read file to the write file
@@ -252,9 +252,9 @@ namespace MahoyoHDRepack
             using var uniqWrite = new UniqueRef<IFile>();
 
             // always open the read file with Read
-            var readResult = readFs.Get.OpenFile(ref uniqRead.Ref(), path, OpenMode.Read);
+            var readResult = readFs.Get.OpenFile(ref uniqRead.Ref, path, OpenMode.Read);
             // open the write file with the mode provided
-            var writeResult = writeFs.Get.OpenFile(ref uniqWrite.Ref(), path, mode);
+            var writeResult = writeFs.Get.OpenFile(ref uniqWrite.Ref, path, mode);
 
             Helpers.Assert(readResult.IsFailure() ^ uniqRead.HasValue);
             Helpers.Assert(writeResult.IsFailure() ^ uniqWrite.HasValue);
@@ -270,7 +270,7 @@ namespace MahoyoHDRepack
             var result = stored.Initialize(path);
             if (result.IsFailure()) return result.Miss();
 
-            outFile.Get = new WriteOverlayFile(stored, this, mode, ref uniqRead.Ref(), ref uniqWrite.Ref());
+            outFile.Reset(new WriteOverlayFile(stored, this, mode, ref uniqRead.Ref, ref uniqWrite.Ref));
             return Result.Success;
         }
 

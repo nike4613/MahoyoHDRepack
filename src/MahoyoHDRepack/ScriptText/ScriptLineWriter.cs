@@ -19,11 +19,11 @@ namespace MahoyoHDRepack.ScriptText
         public static Result WriteLines(MzpFileSystem fs, GameLanguage lang, ReadOnlySpan<string> lines)
         {
             using var uniqOffsetsFile = new UniqueRef<IFile>();
-            var result = LineBoundaryParser.OpenLangBoundaryFile(fs, ref uniqOffsetsFile.Ref(), lang, OpenMode.Write);
+            var result = LineBoundaryParser.OpenLangBoundaryFile(fs, ref uniqOffsetsFile.Ref, lang, OpenMode.Write);
             if (result.IsFailure()) return result.Miss();
 
             using var uniqTextFile = new UniqueRef<IFile>();
-            result = LineBoundaryParser.OpenLangLineDataFile(fs, ref uniqTextFile.Ref(), lang, OpenMode.AllowAppend | OpenMode.Write);
+            result = LineBoundaryParser.OpenLangLineDataFile(fs, ref uniqTextFile.Ref, lang, OpenMode.AllowAppend | OpenMode.Write);
             if (result.IsFailure()) return result.Miss();
 
             return WriteLines(uniqOffsetsFile.Get, uniqTextFile.Get, lines);

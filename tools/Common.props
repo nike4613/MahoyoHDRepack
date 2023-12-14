@@ -9,8 +9,8 @@
     <Deterministic>true</Deterministic>
     <ProduceReferenceAssembly>false</ProduceReferenceAssembly>
     
-    <TargetFrameworks>net7.0;</TargetFrameworks>
-    <!--<TargetFramework>net7.0</TargetFramework>-->
+    <TargetFrameworks>net8.0;</TargetFrameworks>
+    <!--<TargetFramework>net8.0</TargetFramework>-->
     <!-- If a project wants to target some subset or other set, then they can just reassign TargetFrameworks in their project file -->
 
     <NoWarn>$(NoWarn);NETSDK1138</NoWarn> <!-- Target framework is out of support -->

@@ -127,7 +127,7 @@ public sealed class MzpFileSystem : IFileSystem
             entries[i] = mzpEntry.ToEntry((uint)dataOffset);
         }
 
-        mzpFs.Get = new MzpFileSystem(storage, size, entries);
+        mzpFs.Reset(new MzpFileSystem(storage, size, entries));
         return Result.Success;
     }
 
@@ -196,7 +196,7 @@ public sealed class MzpFileSystem : IFileSystem
         var result = IStorage.CheckAccessRange(realDataOffset, realDataLength, storageSize);
         if (result.IsFailure()) return result.Miss();
 
-        outFile.Get = GetStorageForEntry(ref entry).AsFile(mode);
+        outFile.Reset(GetStorageForEntry(ref entry).AsFile(mode));
         return Result.Success;
     }
 
@@ -485,7 +485,7 @@ public sealed class MzpFileSystem : IFileSystem
             return ResultFs.FileNotFound.Value;
         }
 
-        outDirectory.Get = new MzpDirectory(this, mode);
+        outDirectory.Reset(new MzpDirectory(this, mode));
         return Result.Success;
     }
 

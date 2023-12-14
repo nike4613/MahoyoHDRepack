@@ -7,6 +7,7 @@ using LibHac.Tools.FsSystem.NcaUtils;
 using LibHac.Tools.FsSystem;
 using Ryujinx.HLE.FileSystem;
 using Ryujinx.HLE.HOS;
+using Ryujinx.Ui.App.Common;
 
 namespace MahoyoHDRepack;
 
@@ -23,7 +24,7 @@ public static class XciHelpers
         foreach (var entry in pfs.EnumerateEntries("/", "*.nca"))
         {
             using var ncaFile = new UniqueRef<IFile>();
-            pfs.OpenFile(ref ncaFile.Ref(), entry.FullPath.ToU8Span(), OpenMode.Read).ThrowIfFailure();
+            pfs.OpenFile(ref ncaFile.Ref, entry.FullPath.ToU8Span(), OpenMode.Read).ThrowIfFailure();
 
             var nca = new Nca(vfs.KeySet, ncaFile.Get.AsStorage());
             if (nca.Header.ContentType == NcaContentType.Program)
@@ -42,7 +43,7 @@ public static class XciHelpers
 
         Helpers.Assert(mainNca is not null);
 
-        var (updatePatchNca, _) = ApplicationLoader.GetGameUpdateData(vfs, mainNca.Header.TitleId.ToString("x16"), programIndex, out _);
+        var (updatePatchNca, _) = ApplicationLibrary.GetGameUpdateData(vfs, mainNca.Header.TitleId.ToString("x16"), programIndex, out _);
         if (updatePatchNca is not null)
         {
             patchNca = updatePatchNca;

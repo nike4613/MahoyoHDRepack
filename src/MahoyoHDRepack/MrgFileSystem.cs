@@ -100,7 +100,7 @@ namespace MahoyoHDRepack
             if (result.IsFailure()) return result.Miss();
 
             using var uniqMrgFile = new UniqueRef<IFile>();
-            result = fs.OpenFile(ref uniqMrgFile.Ref(), in curPath, OpenMode.Read);
+            result = fs.OpenFile(ref uniqMrgFile.Ref, in curPath, OpenMode.Read);
             if (result.IsFailure()) return result.Miss();
 
             // load the HED file
@@ -109,7 +109,7 @@ namespace MahoyoHDRepack
             if (result.IsFailure()) return result.Miss();
 
             using var uniqHedFile = new UniqueRef<IFile>();
-            result = fs.OpenFile(ref uniqHedFile.Ref(), in curPath, OpenMode.Read);
+            result = fs.OpenFile(ref uniqHedFile.Ref, in curPath, OpenMode.Read);
             if (result.IsFailure()) return result.Miss();
 
             // try to load the NAM file, if present
@@ -118,8 +118,8 @@ namespace MahoyoHDRepack
             if (result.IsFailure()) return result.Miss();
 
             using var uniqNamFile = new UniqueRef<IFile?>();
-            result = fs.OpenFile(ref uniqNamFile.Ref(), in curPath, OpenMode.Read);
-            if (result.IsFailure()) uniqNamFile.Get = null;
+            result = fs.OpenFile(ref uniqNamFile.Ref, in curPath, OpenMode.Read);
+            if (result.IsFailure()) uniqNamFile.Reset(null);
 
             const int HedEntrySize = 8;
             Span<byte> readBuf = stackalloc byte[Math.Max(Name.Size, HedEntrySize)];
@@ -287,7 +287,7 @@ namespace MahoyoHDRepack
             if (result.IsFailure()) return result.Miss();
 
             var entry = files.Span[idx];
-            outFile.Get = FileScanner.TryGetDecompressedFile(new PartialFile(mrg, entry.Offset, entry.Size));
+            outFile.Reset(FileScanner.TryGetDecompressedFile(new PartialFile(mrg, entry.Offset, entry.Size)));
             return Result.Success;
         }
 
@@ -356,7 +356,7 @@ namespace MahoyoHDRepack
                 return ResultFs.FileNotFound.Value;
             }
 
-            outDirectory.Get = new MrgDirectory(this, mode);
+            outDirectory.Reset(new MrgDirectory(this, mode));
             return Result.Success;
         }
 

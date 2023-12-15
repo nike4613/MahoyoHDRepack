@@ -13,7 +13,7 @@ translation team's tools [deepLuna](https://github.com/Hakanaou/deepLuna) and
 
 ## Building
 
-First, ensure you have the [.NET 7 SDK](https://dotnet.microsoft.com/en-us/download/dotnet/7.0) installed.
+First, ensure you have the [.NET 8 SDK](https://dotnet.microsoft.com/en-us/download/dotnet/8.0) installed.
 
 ```sh
 git clone ... && pushd MahoyoHDRepack
@@ -21,15 +21,15 @@ git submodule update --init --recursive
 dotnet build -c Release
 ```
 
-This will place the resulting executable at `artifacts/bin/MahoyoHDRepack/Release/net7.0/`.
+This will place the resulting executable at `artifacts/bin/MahoyoHDRepack/Release/net8.0/`.
 
 If you want a single self-contained native executable, you can use
 ```sh
-dotnet publish src/MahoyoHDRepack/MahoyoHDRepack.csproj -c Release -f net7.0 -p:InvariantGlobalization=true --self-contained -r <RID>
+dotnet publish src/MahoyoHDRepack/MahoyoHDRepack.csproj -c Release -f net8.0 -p:InvariantGlobalization=true --self-contained -r <RID>
 ```
 replacing `<RID>` with the
 [Runtime Identifier](https://learn.microsoft.com/en-us/dotnet/core/rid-catalog) for
-your current platform. For instance, you may use `win-x64` or `linux-x64`. This will place the resulting binary at `artifacts/bin/MahoyoHDRepack/Release/net7.0/<RID>/publish/`.
+your current platform. For instance, you may use `win-x64` or `linux-x64`. This will place the resulting binary at `artifacts/bin/MahoyoHDRepack/Release/net8.0/<RID>/publish/`.
 
 # Setup for use
 

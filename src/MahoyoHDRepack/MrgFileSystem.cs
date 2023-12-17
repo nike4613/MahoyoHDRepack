@@ -150,7 +150,7 @@ namespace MahoyoHDRepack
                         return new Result(256, 10);
                     }
 
-                    var offset = MemoryMarshal.Read<LEInt32>(readBuf).Value;
+                    var offset = MemoryMarshal.Read<LEUInt32>(readBuf).Value;
                     if (offset == uint.MaxValue)
                     {
                         // end of file
@@ -159,7 +159,7 @@ namespace MahoyoHDRepack
 
                     offset *= SectorSize;
 
-                    var size = SectorSize * MemoryMarshal.Read<LEInt16>(readBuf[4..]).Value;
+                    var size = SectorSize * MemoryMarshal.Read<LEUInt16>(readBuf[4..]).Value;
 
                     entries[i] = new(offset, size);
                 }

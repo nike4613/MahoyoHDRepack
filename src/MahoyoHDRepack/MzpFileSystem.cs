@@ -1,5 +1,5 @@
 ﻿using System;
-using System.Buffers;
+using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -22,7 +22,7 @@ public sealed class MzpFileSystem : CopyOnWriteFileSystem
     {
         public unsafe ReadOnlySpan<byte> Magic => MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<MzpHeader, byte>(ref this), 6);
         [FieldOffset(6)]
-        public readonly LEInt16 EntryCount;
+        public readonly LEUInt16 EntryCount;
 
         public MzpHeader(ushort entryCount)
         {
@@ -35,13 +35,13 @@ public sealed class MzpFileSystem : CopyOnWriteFileSystem
     private readonly struct MzpEntry
     {
         [FieldOffset(0)]
-        public readonly LEInt16 SectorOffset;
+        public readonly LEUInt16 SectorOffset;
         [FieldOffset(2)]
-        public readonly LEInt16 ByteOffset;
+        public readonly LEUInt16 ByteOffset;
         [FieldOffset(4)]
-        public readonly LEInt16 SizeSectors;
+        public readonly LEUInt16 SizeSectors;
         [FieldOffset(6)]
-        public readonly LEInt16 SizeBytes;
+        public readonly LEUInt16 SizeBytes;
 
         public MzpEntry(uint size, uint offset)
         {
@@ -143,11 +143,13 @@ public sealed class MzpFileSystem : CopyOnWriteFileSystem
 
         if (pathStr.Contains((byte)'/'))
         {
+            copy.Dispose();
             // path has directories
             return ResultFs.InvalidPath.Value;
         }
 
         result = Utils.ParseHexFromU8(pathStr, out index);
+        copy.Dispose();
         if (result.IsFailure()) return result.Miss();
 
         return Result.Success;
@@ -233,7 +235,7 @@ public sealed class MzpFileSystem : CopyOnWriteFileSystem
             return Result.Success;
         }
 
-        private int baseIdx = 0;
+        private int baseIdx;
 
         protected override Result DoRead(out long entriesRead, Span<DirectoryEntry> entryBuffer)
         {
@@ -249,7 +251,7 @@ public sealed class MzpFileSystem : CopyOnWriteFileSystem
                 var nameSpan = entry.Name.Items;
                 nameSpan.Clear();
 
-                var name = (baseIdx + i).ToString("x16");
+                var name = (baseIdx + i).ToString("x16", CultureInfo.InvariantCulture);
                 _ = Encoding.UTF8.GetBytes(name, nameSpan);
             }
             entriesRead = i;
@@ -264,6 +266,7 @@ public sealed class MzpFileSystem : CopyOnWriteFileSystem
         if (result.IsFailure()) return result.Miss();
 
         var pathStr = copy.AsSpan();
+        copy.Dispose();
         if (pathStr.Length is not 1 || pathStr[0] is not (byte)'/')
         {
             return ResultFs.FileNotFound.Value;

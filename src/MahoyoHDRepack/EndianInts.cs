@@ -4,7 +4,7 @@ using System.Runtime.InteropServices;
 namespace MahoyoHDRepack;
 
 [StructLayout(LayoutKind.Explicit, Size = sizeof(ushort))]
-public struct LEInt16
+public struct LEUInt16
 {
     [FieldOffset(0)]
     private ushort value;
@@ -18,21 +18,21 @@ public struct LEInt16
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static LEInt16 From(ushort value)
+    public static LEUInt16 From(ushort value)
     {
-        LEInt16 val = default;
+        LEUInt16 val = default;
         val.Value = value;
         return val;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static implicit operator ushort(LEInt16 x) => x.Value;
+    public static implicit operator ushort(LEUInt16 x) => x.Value;
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static implicit operator LEInt16(ushort x) => From(x);
+    public static implicit operator LEUInt16(ushort x) => From(x);
 }
 
 [StructLayout(LayoutKind.Explicit, Size = sizeof(uint))]
-public struct LEInt32
+public struct LEUInt32
 {
     [FieldOffset(0)]
     private uint value;
@@ -46,21 +46,21 @@ public struct LEInt32
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static LEInt32 From(uint value)
+    public static LEUInt32 From(uint value)
     {
-        LEInt32 val = default;
+        LEUInt32 val = default;
         val.Value = value;
         return val;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static implicit operator uint(LEInt32 x) => x.Value;
+    public static implicit operator uint(LEUInt32 x) => x.Value;
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static implicit operator LEInt32(uint x) => From(x);
+    public static implicit operator LEUInt32(uint x) => From(x);
 }
 
 [StructLayout(LayoutKind.Explicit, Size = sizeof(ulong))]
-public struct LEInt64
+public struct LEUInt64
 {
     [FieldOffset(0)]
     private ulong value;
@@ -74,17 +74,17 @@ public struct LEInt64
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static LEInt64 From(ulong value)
+    public static LEUInt64 From(ulong value)
     {
-        LEInt64 val = default;
+        LEUInt64 val = default;
         val.Value = value;
         return val;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static implicit operator ulong(LEInt64 x) => x.Value;
+    public static implicit operator ulong(LEUInt64 x) => x.Value;
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static implicit operator LEInt64(ulong x) => From(x);
+    public static implicit operator LEUInt64(ulong x) => From(x);
 }
 
 [StructLayout(LayoutKind.Explicit, Size = sizeof(byte))]

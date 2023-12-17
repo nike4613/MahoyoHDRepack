@@ -9,6 +9,8 @@ internal static class FileScanner
     public static ReadOnlySpan<byte> Mzx => "MZX0"u8;
     public static ReadOnlySpan<byte> NxCx => "NXCX"u8;
     public static ReadOnlySpan<byte> NxGx => "NXGX"u8;
+    public static ReadOnlySpan<byte> Hfa => "HUNEXGGEFA10"u8;
+
 
     private const int MaxMagicBytes = 6;
 

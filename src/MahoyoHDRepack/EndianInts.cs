@@ -3,34 +3,6 @@ using System.Runtime.InteropServices;
 
 namespace MahoyoHDRepack;
 
-[StructLayout(LayoutKind.Explicit, Size = sizeof(byte))]
-public struct LEInt8
-{
-    [FieldOffset(0)]
-    private byte value;
-
-    public byte Value
-    {
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        get => Utils.LEToHost(value);
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        set => this.value = Utils.HostToLE(value);
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static LEInt8 From(byte value)
-    {
-        LEInt8 val = default;
-        val.Value = value;
-        return val;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static implicit operator byte(LEInt8 x) => x.Value;
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static implicit operator LEInt8(byte x) => From(x);
-}
-
 [StructLayout(LayoutKind.Explicit, Size = sizeof(ushort))]
 public struct LEInt16
 {

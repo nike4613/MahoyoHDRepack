@@ -13,28 +13,19 @@ namespace MahoyoHDRepack.Verbs;
 internal static class ExtractFile
 {
     public static void Run(
-        string? ryuBase,
-        FileInfo xciFile,
+        IFileSystem rootFs,
         string arcPath,
         string outLoc,
         bool raw,
         bool noArc
     )
     {
-        Common.InitRyujinx(ryuBase, out _, out var vfs);
-
-        // attempt to mount the XCI file
-        using var xciHandle = File.OpenHandle(xciFile.FullName, FileMode.Open, FileAccess.Read, FileShare.Read, FileOptions.RandomAccess);
-        using var xciStorage = new RandomAccessStorage(xciHandle);
-
-        var romfs = XciHelpers.MountXci(xciStorage, vfs);
-
         // TODO: support extracting full directories
 
-        var path = new FsPath();
+        using var path = new FsPath();
         path.InitializeWithNormalization(arcPath.ToU8Span()).ThrowIfFailure();
 
-        using var uniqFile = OpenFile(romfs, path, raw, noArc);
+        using var uniqFile = OpenFile(rootFs, path, raw, noArc);
 
         FileInfo outFile;
         if (outLoc.EndsWith('/') || Directory.Exists(outLoc))
@@ -130,6 +121,15 @@ internal static class ExtractFile
                     // oh well!
                     Utils.Normalize(inArcPath, out normalized).ThrowIfFailure();
                     return OpenFileInArchive(ref outFile, mzpFs, normalized);
+                }
+
+            case KnownFileTypes.Hfa:
+                {
+                    using var uniqFs = new UniqueRef<IFileSystem>();
+                    HfaFileSystem.Read(ref uniqFs.Ref, uniqFile.Release().AsStorage()).ThrowIfFailure();
+                    var hfaFs = uniqFs.Release();
+                    Utils.Normalize(inArcPath, out normalized).ThrowIfFailure();
+                    return OpenFileInArchive(ref outFile, hfaFs, normalized);
                 }
 
             case KnownFileTypes.Unknown:

@@ -196,7 +196,7 @@ namespace MahoyoHDRepack
                 return ResultFs.InvalidPath.Value;
             }
 
-            var str = pathStr.ToString();
+            var str = Encoding.UTF8.GetString(pathStr);
             copy.Dispose();
             if (nameToIdx.TryGetValue(str, out index))
             {

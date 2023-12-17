@@ -1,5 +1,8 @@
 ﻿using System.CommandLine;
+using System.CommandLine.Invocation;
+using System.CommandLine.IO;
 using System.IO;
+using LibHac.FsSystem;
 using MahoyoHDRepack;
 using MahoyoHDRepack.Verbs;
 
@@ -15,29 +18,31 @@ var ryuBasePath = new Option<string?>(
 var xciFile = new Option<FileInfo>(
     new[] { "--xci", "-x" }, "Game XCI file")
 {
-    IsRequired = true,
-    Arity = ArgumentArity.ExactlyOne
+    IsRequired = false,
+};
+
+var gameDir = new Option<DirectoryInfo>(
+    new[] { "--game-dir", "-d" }, "Game directory")
+{
+    IsRequired = false,
 };
 
 var language = new Option<GameLanguage>(
     new[] { "--lang", "-l" }, "Language to operate on")
 {
     IsRequired = true,
-    Arity = ArgumentArity.ExactlyOne
 };
 
 var outFile = new Option<FileInfo>(
     new[] { "--out", "-o" }, "Output file")
 {
     IsRequired = true,
-    Arity = ArgumentArity.ExactlyOne
 };
 
 var outDir = new Option<DirectoryInfo>(
     new[] { "--out", "-o" }, "Output directory")
 {
     IsRequired = true,
-    Arity = ArgumentArity.ExactlyOne
 };
 
 rootCmd.AddGlobalOption(ryuBasePath);
@@ -50,12 +55,49 @@ rootCmd.AddGlobalOption(ryuBasePath);
 
     var cmd = new Command("extract", "Extracts a single file from the RomFS.")
     {
-        xciFile, path, outLoc, raw, noArchive
+        xciFile, path, outLoc, raw, noArchive, gameDir
     };
 
-    var exec = ExtractFile.Run;
-    cmd.SetHandler(exec, ryuBasePath, xciFile, path, outLoc, raw, noArchive);
+    cmd.SetHandler(Exec);
     rootCmd.Add(cmd);
+
+    void Exec(InvocationContext context)
+    {
+        var xciFileInfo = context.ParseResult.GetValueForOption(xciFile);
+
+        if (xciFileInfo is not null)
+        {
+            var ryuBase = context.ParseResult.GetValueForOption(ryuBasePath);
+
+            Common.InitRyujinx(ryuBase, out _, out var vfs);
+
+            // attempt to mount the XCI file
+            using var xciHandle = File.OpenHandle(xciFileInfo.FullName, FileMode.Open, FileAccess.Read, FileShare.Read, FileOptions.RandomAccess);
+            using var xciStorage = new RandomAccessStorage(xciHandle);
+
+            using var romfs = XciHelpers.MountXci(xciStorage, vfs);
+
+            ExtractFile.Run(romfs,
+                context.ParseResult.GetValueForArgument(path), context.ParseResult.GetValueForArgument(outLoc),
+                context.ParseResult.GetValueForOption(raw), context.ParseResult.GetValueForOption(noArchive));
+        }
+        else
+        {
+            var dir = context.ParseResult.GetValueForOption(gameDir);
+            if (dir is null)
+            {
+                context.ExitCode = -1;
+                context.Console.Error.WriteLine("If --xci is not specified, --game-dir must be");
+                return;
+            }
+
+            using var rootfs = new LocalFileSystem(dir.FullName);
+
+            ExtractFile.Run(rootfs,
+                context.ParseResult.GetValueForArgument(path), context.ParseResult.GetValueForArgument(outLoc),
+                context.ParseResult.GetValueForOption(raw), context.ParseResult.GetValueForOption(noArchive));
+        }
+    }
 }
 
 {

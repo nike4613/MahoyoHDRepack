@@ -12,7 +12,7 @@ internal static class FileScanner
     public static ReadOnlySpan<byte> Hfa => "HUNEXGGEFA10"u8;
 
 
-    private const int MaxMagicBytes = 6;
+    private const int MaxMagicBytes = 12;
 
     public static KnownFileTypes ProbeForFileType(IFile file)
     {
@@ -25,6 +25,7 @@ internal static class FileScanner
         if (Matches(read, magic, Mzx)) return KnownFileTypes.Mzx;
         if (Matches(read, magic, NxCx)) return KnownFileTypes.Nxx;
         if (Matches(read, magic, NxGx)) return KnownFileTypes.Nxx;
+        if (Matches(read, magic, Hfa)) return KnownFileTypes.Hfa;
 
         return KnownFileTypes.Unknown;
     }
@@ -39,6 +40,7 @@ internal static class FileScanner
         {
             KnownFileTypes.Unknown => file,
             KnownFileTypes.Mzp => file, // this is an archive format, not a compressed file
+            KnownFileTypes.Hfa => file, // this is an archive format, not a compressed file
             KnownFileTypes.Mzx => throw new NotImplementedException(),
             KnownFileTypes.Nxx => NxxFile.TryCreate(file),
             _ => file
@@ -52,4 +54,5 @@ public enum KnownFileTypes
     Mzp,
     Mzx,
     Nxx,
+    Hfa,
 }

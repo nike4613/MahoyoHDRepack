@@ -8,6 +8,8 @@ namespace MahoyoHDRepack
     {
         private byte[] memory = Array.Empty<byte>();
 
+        public static MemoryStorage Adopt(byte[] data) => new() { memory = data };
+
         public long Size => memory.LongLength;
         public ReadOnlyMemory<byte> AllData => memory;
 

@@ -1,5 +1,6 @@
 ﻿using System;
 using LibHac.Fs.Fsa;
+using LibHac.Tools.FsSystem;
 
 namespace MahoyoHDRepack;
 
@@ -10,9 +11,10 @@ internal static class FileScanner
     public static ReadOnlySpan<byte> NxCx => "NXCX"u8;
     public static ReadOnlySpan<byte> NxGx => "NXGX"u8;
     public static ReadOnlySpan<byte> Hfa => "HUNEXGGEFA10"u8;
+    public static ReadOnlySpan<byte> LenZuCompressed => LenZuCompressorFile.ExpectHeader;
 
 
-    private const int MaxMagicBytes = 12;
+    private const int MaxMagicBytes = 32;
 
     public static KnownFileTypes ProbeForFileType(IFile file)
     {
@@ -26,6 +28,7 @@ internal static class FileScanner
         if (Matches(read, magic, NxCx)) return KnownFileTypes.Nxx;
         if (Matches(read, magic, NxGx)) return KnownFileTypes.Nxx;
         if (Matches(read, magic, Hfa)) return KnownFileTypes.Hfa;
+        if (Matches(read, magic, LenZuCompressed)) return KnownFileTypes.LenZuCompressor;
 
         return KnownFileTypes.Unknown;
     }
@@ -43,6 +46,7 @@ internal static class FileScanner
             KnownFileTypes.Hfa => file, // this is an archive format, not a compressed file
             KnownFileTypes.Mzx => throw new NotImplementedException(),
             KnownFileTypes.Nxx => NxxFile.TryCreate(file),
+            KnownFileTypes.LenZuCompressor => LenZuCompressorFile.ReadCompressed(file.AsStorage()).AsFile(LibHac.Fs.OpenMode.Read),
             _ => file
         };
     }
@@ -55,4 +59,5 @@ public enum KnownFileTypes
     Mzx,
     Nxx,
     Hfa,
+    LenZuCompressor,
 }

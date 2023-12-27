@@ -159,20 +159,21 @@ namespace MahoyoHDRepack
                     }
                     ulong l3 = CONCAT44(0, incr);
                     var allocateSize = ulong.CreateSaturating(0x10 * new Int128(0, l3));
-                    var allocated = (byte*)NativeMemory.Alloc((nuint)allocateSize);
+                    var allocated = (AllocatedStruct*)NativeMemory.Alloc((nuint)allocateSize);
                     if (allocated is null)
                     {
                         return -9;
                     }
                     if (incr != 0)
                     {
-                        var curHead = allocated + 8;
+                        var curHead = allocated;
                         do
                         {
-                            *(int*)(curHead - 8) = 0;
-                            *(long*)(curHead - 4) = -1;
-                            curHead[4] = 0xff;
-                            curHead = curHead + 0x10;
+                            curHead->_0 = 0;
+                            curHead->_4 = uint.MaxValue;
+                            curHead->_8 = uint.MaxValue;
+                            curHead->_c = 0xff;
+                            curHead = curHead + 1;
                             l3 -= 1;
                         }
                         while (l3 != 0);
@@ -224,7 +225,7 @@ namespace MahoyoHDRepack
                                     offset = lz_read_int(&_1, compressedSpan, (int)baseIdx + lenBytesRead, _7, 0x20);
                                     lenBytesRead += offset;
                                     incr = (uint)y + 1;
-                                    *(uint*)(allocated + ((ulong)int2 * 0x10)) = _1;
+                                    allocated[int2]._0 = _1;
                                     y = incr;
                                 }
                                 while (incr < value);
@@ -256,9 +257,9 @@ namespace MahoyoHDRepack
                                 if (int2 == 0) break;
                                 do
                                 {
-                                    u1 = *(uint*)curAlloc;
+                                    u1 = curAlloc->_0;
                                     u5 = (uint)l3;
-                                    if ((u1 != 0) && (curAlloc[0xc] == 0xff))
+                                    if ((u1 != 0) && (curAlloc->_c == 0xff))
                                     {
                                         uVar3 = (ulong)((int)uVar3 + 1);
                                         u3 = u1;
@@ -282,24 +283,23 @@ namespace MahoyoHDRepack
                                     {
                                         //Debugger.Break();
                                     }
-                                    curAlloc = curAlloc + 0x10;
+                                    curAlloc = curAlloc + 1;
                                     l3 = (ulong)(u5 + 1);
                                 }
                                 while (u5 + 1 < int2);
                                 if ((uint)uVar3 < 2) break;
                                 l3 = (ulong)int2;
-                                *(int*)(allocated + l3 * 0x10) =
-                                    *(int*)(allocated + (ulong)incr * 0x10) +
-                                    *(int*)(allocated + (ulong)a7 * 0x10);
+                                allocated[int2]._0 = allocated[incr]._0 + allocated[a7]._0;
+                                allocated[int2]._4 = a7;
+                                allocated[int2]._8 = incr;
+                                allocated[a7]._c = 1;
+                                allocated[incr]._c = 0;
+
                                 int2 += 1;
-                                *(uint*)(allocated + l3 * 0x10 + 4) = a7;
-                                *(uint*)(allocated + l3 * 0x10 + 8) = incr;
-                                allocated[(ulong)a7 * 0x10 + 0xc] = 1;
-                                allocated[(ulong)incr * 0x10 + 0xc] = 0;
                             }
                             if (int2 <= _zero + 1)
                             {
-                                allocated[(ulong)a7 * 0x10 + 0xc] = 1;
+                                allocated[a7]._c = 1;
                             }
                             if (int2 != 0)
                             {
@@ -309,7 +309,7 @@ namespace MahoyoHDRepack
                                 if (0 < (int)int2)
                                 {
                                     NativeMemory.Free(allocated);
-                                    curHead = pSVar2->Data;
+                                    var pbVar3 = pSVar2->Data;
                                     ReadOnlySpan<int> lut = [0xe9, 0x11f, 0x137, 0x1b1];
                                     l3 = 0;
                                     if (pSVar2->Length != 0)
@@ -319,8 +319,8 @@ namespace MahoyoHDRepack
                                             incr = (uint)_0;
                                             a6 = incr + 1;
                                             _0 = (ulong)a6;
-                                            l3 = (ulong)((long)(l3 + *curHead) * (long)lut[(int)(incr & 3)]);
-                                            curHead = curHead + 1;
+                                            l3 = (ulong)((long)(l3 + *pbVar3) * (long)lut[(int)(incr & 3)]);
+                                            pbVar3 = pbVar3 + 1;
                                         }
                                         while(a6 < (uint)pSVar2->Length);
                                     }
@@ -591,7 +591,7 @@ namespace MahoyoHDRepack
                 return 0x20;
             }
 
-            private static uint FUN_5730(LzHeaderData* headerData, NativeSpan* decompressedData, NativeSpan* compressedData, uint baseIdx, int _7, uint fileLen, byte* allocated, uint int2)
+            private static uint FUN_5730(LzHeaderData* headerData, NativeSpan* decompressedData, NativeSpan* compressedData, uint baseIdx, int _7, uint fileLen, AllocatedStruct* allocated, uint int2)
             {
                 uint uVar1, uVar2, uVar4, uVar6, _7_2, u_zero;
                 ulong uVar3, uVar5;

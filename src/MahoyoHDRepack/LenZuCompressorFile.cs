@@ -1,10 +1,12 @@
 ﻿using System;
-using System.Diagnostics;
 using System.Linq;
+using System.Reflection.Metadata.Ecma335;
 using System.Runtime.InteropServices;
 using LibHac;
 using LibHac.Common;
 using LibHac.Fs;
+using LibHac.FsSrv;
+using SixLabors.ImageSharp.Processing;
 using Buffer = System.Buffer;
 
 namespace MahoyoHDRepack
@@ -589,12 +591,329 @@ namespace MahoyoHDRepack
                 return 0x20;
             }
 
-            private static uint FUN_5730(LzHeaderData* v, NativeSpan* decompressedData, NativeSpan* compressedData, uint baseIdx, int _7, uint fileLen, byte* allocated, uint int2)
+            private static uint FUN_5730(LzHeaderData* headerData, NativeSpan* decompressedData, NativeSpan* compressedData, uint baseIdx, int _7, uint fileLen, byte* allocated, uint int2)
             {
-                throw new NotImplementedException();
+                uint uVar1, uVar2, uVar4, uVar6, _7_2, u_zero;
+                ulong uVar3, uVar5;
+                int iVar5, iVar6, iVar7, cidx, iVar8, iVar9;
+                byte b_zero, bVar8, @byte, bVar10;
+                byte* pCompressed, pDecompressed;
+
+                pDecompressed = decompressedData->Data;
+                pCompressed = compressedData->Data + baseIdx;
+                _7_2 = (uint)_7;
+                b_zero = 0;
+                cidx = 0;
+                u_zero = 0;
+                _7 = 0;
+                uVar6 = 0;
+
+                while (true)
+                {
+                    while (true)
+                    {
+                        if ((fileLen <= u_zero) || (compressedData->Length <= cidx + baseIdx))
+                        {
+                            compressedData->Length = (int)u_zero;
+                            return u_zero;
+                        }
+                        @byte = pCompressed[cidx];
+                        uVar3 = headerData->Max_31_32;
+                        iVar7 = (int)(_7_2 - 1);
+                        iVar8 = iVar7;
+                        if (iVar7 < 0)
+                        {
+                            iVar8 = 7;
+                        }
+                        iVar9 = cidx + 1;
+                        if (-1 < iVar7)
+                        {
+                            iVar9 = cidx;
+                        }
+                        uVar1 = FUN_5ba0(pCompressed, iVar9, iVar8, uVar3, (AllocatedStruct*)allocated, int2, &_7);
+                        if (((@byte >> ((byte)_7_2 & 0x1f)) & 1) == 0)
+                        {
+                            break;
+                        }
+                        if ((int)uVar1 < 0) return (uint)-iVar9;
+                        uVar6 = (uint)(((int)_7 >> 0x1f) & 7);
+                        uVar2 = (uint)(_7 + uVar6);
+                        cidx = (int)uVar2 >> 3;
+                        iVar8 -= (int)((uVar2 & 7) - uVar6);
+                        if (7 < iVar8)
+                        {
+                            cidx += -1;
+                            iVar8 += -8;
+                        }
+                        if (iVar8 < 0)
+                        {
+                            iVar8 += 8;
+                            cidx += 1;
+                        }
+                        iVar9 += cidx;
+                        uVar1 += headerData->_35;
+                        uVar3 = FUN_5ba0(pCompressed, iVar9, iVar8, uVar3, (AllocatedStruct*)allocated, int2, &_7);
+                        if ((int)uVar3 < 0)
+                        {
+                            return (uint)-iVar9;
+                        }
+                        uVar6 = (uint)((int)_7 >> 0x1f) & 7;
+                        uVar2 = (uint)(_7 + uVar6);
+                        cidx = (int)uVar2 >> 3;
+                        _7_2 = (uint)(iVar8 - ((uVar2 & 7) - uVar6));
+                        if (7 < (int)_7_2)
+                        {
+                            _7_2 -= 8;
+                            cidx += -1;
+                        }
+                        if ((int)_7_2 < 0)
+                        {
+                            _7_2 += 8;
+                            cidx += 1;
+                        }
+                        cidx = iVar9 + cidx;
+                        uVar6 = 0;
+                        uVar2 = headerData->_34;
+                        @byte = (byte)uVar2;
+                        if (8 < (int)uVar2)
+                        {
+                            bVar10 = (byte)((0xffu >> (int)((-(int)_7_2 + 7u) & 0x1f)) & pCompressed[cidx]);
+                            if (_7_2 < 8)
+                            {
+                                iVar8 = 0;
+                                b_zero = (byte)(_7_2 - 7);
+                                if ((int)(_7_2 - 7) < 1)
+                                {
+                                    iVar8 = 1;
+                                    b_zero = (byte)(pCompressed[(long)cidx + 1] >> (b_zero + 8 & 0x1f)
+                                        | bVar10 << (-b_zero & 0x1f));
+                                }
+                                else
+                                {
+                                    b_zero = (byte)(bVar10 >> (b_zero & 0x1f));
+                                }
+                            }
+                            else
+                            {
+                                iVar8 = -1;
+                            }
+                            uVar2 -= 8;
+                            cidx += iVar8;
+                            uVar6 = (uint)b_zero << ((byte)uVar2 & 0x1f);
+                        }
+                        if (0 < (int)uVar2)
+                        {
+                            bVar10 = (byte)((byte)(0xff >> (-(int)_7_2 + 7 & 0x1f)) & pCompressed[cidx]);
+                            if ((_7_2 < 8) && (uVar2 - 1 < 8))
+                            {
+                                iVar8 = 0;
+                                iVar7 = (int)((_7_2 - uVar2) + 1);
+                                b_zero = (byte)iVar7;
+                                if (iVar7 < 1)
+                                {
+                                    iVar8 = 1;
+                                    b_zero = (byte)(pCompressed[(long)cidx + 1] >> ((sbyte)(_7_2 - uVar2) + 9 & 0x1f)
+                                        | bVar10 << (-b_zero & 0x1f));
+                                }
+                                else
+                                {
+                                    b_zero = (byte)(bVar10 >> (b_zero & 0x1f));
+                                }
+                            }
+                            else
+                            {
+                                iVar8 = -1;
+                            }
+                            uVar2 &= 0x80000007;
+                            if ((int)uVar2 < 0)
+                            {
+                                uVar2 = (uVar2 - 1 | 0xfffffff8) + 1;
+                            }
+                            uVar2 = _7_2 - uVar2;
+                            uVar4 = uVar2 - 8;
+                            if ((int)uVar2 < 8)
+                            {
+                                uVar4 = uVar2;
+                            }
+                            _7_2 = uVar4 + 8;
+                            if (-1 < (int)uVar4)
+                            {
+                                _7_2 = uVar4;
+                            }
+                            cidx += iVar8;
+                            uVar6 |= b_zero;
+                        }
+                        if (0 < (int)uVar1)
+                        {
+                            uVar2 = headerData->_35;
+                            uVar5 = (ulong)uVar1;
+                            do
+                            {
+                                if ((int)u_zero < fileLen)
+                                {
+                                    *pDecompressed = pDecompressed[-(long)(int)(uVar6 + (uVar3 << (@byte & 0x1f)) + uVar2)];
+                                    pDecompressed += 1;
+                                    u_zero += 1;
+                                }
+                                uVar5 -= 1;
+                            }
+                            while (uVar5 != 0);
+                        }
+                    }
+                    if ((int)uVar1 < 0) break;
+                    uVar2 = (uint)((int)_7 >> 0x1f & 7);
+                    uVar3 = (ulong)(_7 + uVar2);
+                    cidx = (int)uVar3 >> 3;
+                    _7_2 = (uint)(iVar8 - (int)((uVar3 & 7) - uVar2));
+                    if (7 < (int)_7_2)
+                    {
+                        _7_2 -= 8;
+                        cidx += -1;
+                    }
+                    if ((int)_7_2 < 0)
+                    {
+                        _7_2 += 8;
+                        cidx += 1;
+                    }
+                    cidx = iVar9 + cidx;
+                    if (0 < (int)(uVar1 + 1))
+                    {
+                        uVar5 = (ulong)(uVar1 + 1);
+                        do
+                        {
+                            if ((int)u_zero < fileLen)
+                            {
+                                @byte = (byte)((byte)(0xff >> (7 - (int)_7_2 & 0x1f)) & pCompressed[cidx]);
+                                if (_7_2 < 8)
+                                {
+                                    iVar8 = 0;
+                                    b_zero = (byte)(_7_2 - 7);
+                                    if ((int)(_7_2 - 7) < 1)
+                                    {
+                                        iVar8 = 1;
+                                        b_zero = (byte)(pCompressed[(long)cidx + 1] >> (b_zero + 8 & 0x1f)
+                                            | @byte << (-b_zero & 0x1f));
+                                    }
+                                    else
+                                    {
+                                        b_zero = (byte)(@byte >> (b_zero & 0x1f));
+                                    }
+                                }
+                                else
+                                {
+                                    iVar8 = -1;
+                                }
+                                cidx += iVar8;
+                                *pDecompressed = b_zero;
+                                pDecompressed = pDecompressed + 1;
+                                u_zero += 1;
+                            }
+                            uVar5 -= 1;
+                        }
+                        while (uVar5 != 0);
+                    }
+                }
+                return (uint)-iVar9;
             }
 
-#pragma warning restore IDE1006 // Naming Styles
+            [StructLayout(LayoutKind.Explicit)]
+            public struct AllocatedStruct
+            {
+                [FieldOffset(0x0)] public uint _0;
+                [FieldOffset(0x4)] public uint _4;
+                [FieldOffset(0x8)] public uint _8;
+                [FieldOffset(0xc)] public byte _c;
+            }
+
+            private static uint FUN_5ba0(byte* pCompressed, int param_2, int param_3, ulong param_4, AllocatedStruct* allocated, uint int2, int* _7)
+            {
+                uint uVar1, uVar2, uVar5, uVar10, uVar11;
+                long lVar3, lVar6;
+                ulong uVar7, uVar8;
+                int iVar9;
+                byte bVar4;
+
+                uVar2 = 0;
+                uVar5 = 0xfffffff;
+                if ((int)param_4 < 1)
+                {
+                    iVar9 = 0;
+                }
+                else if (param_4 < 0x20)
+                {
+                    iVar9 = (1 << ((byte)param_4 & 0x1f)) + (-1);
+                }
+                else
+                {
+                    iVar9 = -1;
+                }
+                uVar1 = (uint)(iVar9 + 1);
+                if (uVar1 < 0x16a0a)
+                {
+                    uVar5 = (uint)((iVar9 + 2) * uVar1 >> 1);
+                }
+                uVar11 = 0xffffffff;
+                uVar10 = 0xffffffff;
+                if (uVar1 < int2)
+                {
+                    if ((uVar1 != 0) && (uVar5 != 0))
+                    {
+                        lVar6 = (long)param_2;
+                        uVar7 = (ulong)(int2 - 1);
+                        while (true)
+                        {
+                            if ((uint)uVar7 < uVar1)
+                            {
+                                *_7 = (int)uVar2;
+                                return (uint)uVar2;
+                            }
+                            bVar4 = (byte)(pCompressed[lVar6] >> ((byte)param_3 & 0x1f) & 1);
+                            uVar8 = allocated[uVar7]._8;
+                            if (allocated[uVar8]._c != bVar4)
+                            {
+                                uVar8 = allocated[uVar7]._4;
+                                if (allocated[uVar8]._c != bVar4) break;
+                            }
+                            iVar9 = param_3 + (-1);
+                            param_3 = iVar9;
+                            if (iVar9 < 0)
+                            {
+                                param_3 = 7;
+                            }
+                            lVar3 = lVar6 + 1;
+                            if (-1 < iVar9)
+                            {
+                                lVar3 = lVar6;
+                            }
+                            uVar2 += 1;
+                            lVar6 = lVar3;
+                            uVar7 = uVar8;
+                        }
+                        *_7 = (int)uVar2;
+                        return uint.MaxValue;
+                    }
+                    return uint.MaxValue;
+                }
+                if (int2 != 0)
+                {
+                    do
+                    {
+                        uVar10 = uVar11;
+                        if (allocated->_0 != 0)
+                        {
+                            *_7 = 1;
+                            uVar10 = uVar2;
+                        }
+                        uVar2 += 1;
+                        allocated = allocated + 1;
+                        uVar11 = uVar10;
+                    }
+                    while (uVar2 < int2);
+                }
+                return uVar10;
+            }
         }
+
+#pragma warning restore IDE1006 // Naming Styles
     }
 }

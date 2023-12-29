@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Linq;
+using System.Numerics;
 using System.Reflection.Metadata.Ecma335;
 using System.Runtime.InteropServices;
 using LibHac;
@@ -31,9 +32,9 @@ namespace MahoyoHDRepack
             public uint _31; // [3..15]
             public uint _32; // [3..15]
             public uint Max_32_33; // max of _32 and byte at 0x33 in file
-            public uint _34; // [0..above field] + some other constraints
+            public uint _34_BitShift; // [0..above field] + some other constraints
             public uint _35; // [2..8]
-            public uint Max_31_32; // max of _31 and _32
+            public int Max_31_32_DictMaskBitCount; // max of _31 and _32
             public uint _30;
         }
 
@@ -121,11 +122,11 @@ namespace MahoyoHDRepack
                     outSpan->Length = (int)fileLen;
 
                     var offset = lz_read_int(&baseIdx, compressedSpan, readBytes + lenBytesRead, 7, 0x20);
-                    var int2 = baseIdx;
+                    var dictMaskBitCount = baseIdx;
                     offset = readBytes + lenBytesRead + offset;
                     lenBytesRead = lz_read_int(&baseIdx, compressedSpan, offset, 7, 0x20);
                     var local_EBX_213 = offset + lenBytesRead;
-                    var local_80 = CONCAT44(int2, baseIdx);
+                    var local_80 = CONCAT44(dictMaskBitCount, baseIdx);
                     int iVar3 = lz_read_int(&baseIdx, compressedSpan, local_EBX_213, 7, 0x20);
                     var int2_2 = local_EBX_213 + iVar3;
                     lenBytesRead = lz_read_early_data(&lz_data, compressedSpan, int2_2, 7, &_7);
@@ -134,67 +135,32 @@ namespace MahoyoHDRepack
                     {
                         return -2;
                     }
-                    int2 = lz_data.Max_31_32;
-                    byte _max_31_32_b = (byte)lz_data.Max_31_32;
-                    lenBytesRead = _zero;
-                    if (0 < lz_data.Max_31_32)
-                    {
-                        if ((uint)lz_data.Max_31_32 < 0x20)
-                        {
-                            lenBytesRead = (1 << (_max_31_32_b & 0x1f)) + (-1);
-                        }
-                        else
-                        {
-                            lenBytesRead = -1;
-                        }
-                    }
-                    uint incr;
-                    if (lenBytesRead + 1 < 0x16a0a)
-                    {
-                        incr = (uint)((lenBytesRead + 2) * (lenBytesRead + 1)) >> 1;
-                    }
-                    else
-                    {
-                        incr = uint.MaxValue;
-                    }
-                    ulong l3 = CONCAT44(0, incr);
-                    var allocateSize = ulong.CreateSaturating(0x10 * new Int128(0, l3));
-                    var allocated = (AllocatedStruct*)NativeMemory.Alloc((nuint)allocateSize);
-                    if (allocated is null)
+                    dictMaskBitCount = (uint)lz_data.Max_31_32_DictMaskBitCount;
+                    byte _max_31_32_b = (byte)lz_data.Max_31_32_DictMaskBitCount;
+                    var dictSize = GetDictionarySizeFromBitCount(lz_data.Max_31_32_DictMaskBitCount);
+                    var allocateSize = (nuint)((nint)sizeof(DictionaryEntry) * dictSize);
+                    var dictionary = (DictionaryEntry*)NativeMemory.Alloc(allocateSize);
+                    if (dictionary is null)
                     {
                         return -9;
                     }
-                    if (incr != 0)
+                    if (dictSize != 0)
                     {
-                        var curHead = allocated;
-                        do
+                        var curHead = dictionary;
+                        for (var i = 0; i < dictSize; i++)
                         {
-                            curHead->_0 = 0;
-                            curHead->_4 = uint.MaxValue;
-                            curHead->_8 = uint.MaxValue;
-                            curHead->_c = 0xff;
-                            curHead = curHead + 1;
-                            l3 -= 1;
+                            dictionary[i]._0 = 0;
+                            dictionary[i].Next2 = uint.MaxValue;
+                            dictionary[i].Next1 = uint.MaxValue;
+                            dictionary[i].Key = 0xff;
                         }
-                        while (l3 != 0);
-                        if (incr != 0)
+                        if (dictSize != 0)
                         {
-                            lenBytesRead = _zero;
-                            if (0 < (int)int2)
-                            {
-                                if (int2 < 0x20)
-                                {
-                                    lenBytesRead = (1 << (_max_31_32_b & 0x1f)) + (-1);
-                                }
-                                else
-                                {
-                                    lenBytesRead = -1;
-                                }
-                            }
+                            lenBytesRead = GetMaskFromBitCount((int)dictMaskBitCount);
                             uint readBytes2 = (uint)lenBytesRead + 1;
                             uint _1 = 1;
                             uint value = 0;
-                            int read_int_arg5 = (int)((((int)(int2 + 7) >> 0x1f) & 7u) + int2 + 7) >> 3;
+                            int read_int_arg5 = (int)((((int)(dictMaskBitCount + 7) >> 0x1f) & 7u) + dictMaskBitCount + 7) >> 3;
                             var local_ac = read_int_arg5;
                             lenBytesRead = lz_read_int(&value, compressedData, (int)baseIdx, _7, read_int_arg5);
                             var read_int_arg5_2 = local_ac;
@@ -211,55 +177,56 @@ namespace MahoyoHDRepack
                             var y = _0;
                             if (value != 0)
                             {
+                                uint incr;
                                 do
                                 {
-                                    int2 = (uint)y;
+                                    dictMaskBitCount = (uint)y;
                                     if (0 < (int)x)
                                     {
                                         _1 = 0;
                                         offset = lz_read_int(&_1, compressedData, (int)baseIdx + lenBytesRead, _7, read_int_arg5_2);
                                         lenBytesRead += offset;
-                                        int2 = _1;
+                                        dictMaskBitCount = _1;
                                     }
                                     _1 = 0;
                                     offset = lz_read_int(&_1, compressedSpan, (int)baseIdx + lenBytesRead, _7, 0x20);
                                     lenBytesRead += offset;
                                     incr = (uint)y + 1;
-                                    allocated[int2]._0 = _1;
+                                    dictionary[dictMaskBitCount]._0 = _1;
                                     y = incr;
                                 }
                                 while (incr < value);
-                                int2 = lz_data.Max_31_32;
+                                dictMaskBitCount = lz_data.Max_31_32_DictMaskBitCount;
                             }
                             baseIdx += (uint)lenBytesRead;
-                            if (0 < (int)int2)
+                            if (0 < (int)dictMaskBitCount)
                             {
-                                if (int2 < 0x20)
+                                if (dictMaskBitCount < 0x20)
                                 {
-                                    _zero = (1 << ((byte)int2 & 0x1f)) + (-1);
+                                    _zero = (1 << ((byte)dictMaskBitCount & 0x1f)) + (-1);
                                 }
                                 else
                                 {
                                     _zero = -1;
                                 }
                             }
-                            int2 = (uint)_zero + 1u;
+                            dictMaskBitCount = (uint)_zero + 1u;
                             uint a7, a8, a6, u1, u5, u3, u2;
                             while (true)
                             {
                                 a7 = uint.MaxValue;
                                 a8 = uint.MaxValue >> 4;
                                 a6 = uint.MaxValue >> 4;
-                                incr = uint.MaxValue;
-                                l3 = _0;
-                                var curAlloc = allocated;
+                                var incr = uint.MaxValue;
+                                var l3 = _0;
+                                var curAlloc = dictionary;
                                 ulong uVar3 = (uint)_0;
-                                if (int2 == 0) break;
+                                if (dictMaskBitCount == 0) break;
                                 do
                                 {
                                     u1 = curAlloc->_0;
                                     u5 = (uint)l3;
-                                    if ((u1 != 0) && (curAlloc->_c == 0xff))
+                                    if ((u1 != 0) && (curAlloc->Key == 0xff))
                                     {
                                         uVar3 = (ulong)((int)uVar3 + 1);
                                         u3 = u1;
@@ -286,50 +253,50 @@ namespace MahoyoHDRepack
                                     curAlloc = curAlloc + 1;
                                     l3 = (ulong)(u5 + 1);
                                 }
-                                while (u5 + 1 < int2);
+                                while (u5 + 1 < dictMaskBitCount);
                                 if ((uint)uVar3 < 2) break;
-                                l3 = (ulong)int2;
-                                allocated[int2]._0 = allocated[incr]._0 + allocated[a7]._0;
-                                allocated[int2]._4 = a7;
-                                allocated[int2]._8 = incr;
-                                allocated[a7]._c = 1;
-                                allocated[incr]._c = 0;
+                                l3 = (ulong)dictMaskBitCount;
+                                dictionary[dictMaskBitCount]._0 = dictionary[incr]._0 + dictionary[a7]._0;
+                                dictionary[dictMaskBitCount].Next2 = a7;
+                                dictionary[dictMaskBitCount].Next1 = incr;
+                                dictionary[a7].Key = 1;
+                                dictionary[incr].Key = 0;
 
-                                int2 += 1;
+                                dictMaskBitCount += 1;
                             }
-                            if (int2 <= _zero + 1)
+                            if (dictMaskBitCount <= _zero + 1)
                             {
-                                allocated[a7]._c = 1;
+                                dictionary[a7].Key = 1;
                             }
-                            if (int2 != 0)
+                            if (dictMaskBitCount != 0)
                             {
                                 var pSVar2 = decompressedData;
                                 var dataCopy = lz_data;
-                                int2 = FUN_5730(&dataCopy, decompressedData, compressedData, baseIdx, _7, fileLen, allocated, int2);
-                                if (0 < (int)int2)
+                                dictMaskBitCount = FUN_5730(&dataCopy, decompressedData, compressedData, baseIdx, _7, fileLen, dictionary, dictMaskBitCount);
+                                if (0 < (int)dictMaskBitCount)
                                 {
-                                    NativeMemory.Free(allocated);
+                                    NativeMemory.Free(dictionary);
                                     var pbVar3 = pSVar2->Data;
                                     ReadOnlySpan<int> lut = [0xe9, 0x11f, 0x137, 0x1b1];
-                                    l3 = 0;
+                                    ulong l3 = 0;
                                     if (pSVar2->Length != 0)
                                     {
                                         do
                                         {
-                                            incr = (uint)_0;
+                                            var incr = (uint)_0;
                                             a6 = incr + 1;
                                             _0 = (ulong)a6;
                                             l3 = (ulong)((long)(l3 + *pbVar3) * (long)lut[(int)(incr & 3)]);
                                             pbVar3 = pbVar3 + 1;
                                         }
-                                        while(a6 < (uint)pSVar2->Length);
+                                        while (a6 < (uint)pSVar2->Length);
                                     }
                                     pSVar2->Unk = l3;
                                     if (l3 != local_80)
                                     {
                                         return -10;
                                     }
-                                    return (int)int2;
+                                    return (int)dictMaskBitCount;
                                 }
                             }
                         }
@@ -414,7 +381,7 @@ namespace MahoyoHDRepack
                 lz_data->_31 = pData[1];
                 lz_data->_32 = pData[2];
                 lz_data->Max_32_33 = pData[3];
-                lz_data->_34 = pData[4];
+                lz_data->_34_BitShift = pData[4];
                 lz_data->_35 = pData[5];
 
                 *out_2 = _7;
@@ -457,10 +424,10 @@ namespace MahoyoHDRepack
                     data->_32 = _32 = 0xf;
                 }
 
-                data->Max_31_32 = _31;
+                data->Max_31_32_DictMaskBitCount = _31;
                 if ((int)_31 < (int)_32)
                 {
-                    data->Max_31_32 = _31 = _32;
+                    data->Max_31_32_DictMaskBitCount = _31 = _32;
                 }
 
                 _33 = data->Max_32_33;
@@ -476,21 +443,21 @@ namespace MahoyoHDRepack
                     data->Max_32_33 = _max_32_33 = 0xf;
                 }
 
-                _34 = data->_34;
+                _34 = data->_34_BitShift;
                 var _34gtm1 = -1 < (int)_32;
                 if (!_34gtm1)
                 {
-                    data->_34 = _34 = 0;
+                    data->_34_BitShift = _34 = 0;
                 }
                 var _34lt_max = (int)_34 < (int)_max_32_33;
                 if (!_34lt_max)
                 {
-                    data->_34 = _34 = _max_32_33 - 1;
+                    data->_34_BitShift = _34 = _max_32_33 - 1;
                 }
                 var _mdiffltemax = (int)(_max_32_33 - _34) <= (int)_31;
                 if (!_mdiffltemax)
                 {
-                    data->_34 = _max_32_33 - _31;
+                    data->_34_BitShift = _max_32_33 - _31;
                 }
 
                 if ((int)data->_35 < 2)
@@ -591,22 +558,22 @@ namespace MahoyoHDRepack
                 return 0x20;
             }
 
-            private static uint FUN_5730(LzHeaderData* headerData, NativeSpan* decompressedData, NativeSpan* compressedData, uint baseIdx, int _7, uint fileLen, AllocatedStruct* allocated, uint int2)
+            private static uint FUN_5730(LzHeaderData* headerData, NativeSpan* decompressedData, NativeSpan* compressedData, uint baseIdx, int _7, uint fileLen, DictionaryEntry* dictionary, uint int2)
             {
-                uint uVar1, uVar2, uVar4, uVar6, _7_2, u_zero;
-                ulong uVar3, uVar5;
-                int iVar5, iVar6, iVar7, cidx, iVar8, iVar9;
-                byte b_zero, bVar8, @byte, bVar10;
+                uint readDictSeqResult, _34_bitShift, uVar4, sgn7, _7_2, u_zero;
+                ulong dictMaskBitCount, uVar5;
+                int iVar5, iVar6, bitOffs, cidx, nextBitOffs, nextIndex;
+                byte readMaskedByte, bVar8, curByte, maskedByte;
                 byte* pCompressed, pDecompressed;
 
                 pDecompressed = decompressedData->Data;
                 pCompressed = compressedData->Data + baseIdx;
                 _7_2 = (uint)_7;
-                b_zero = 0;
+                readMaskedByte = 0;
                 cidx = 0;
                 u_zero = 0;
                 _7 = 0;
-                uVar6 = 0;
+                sgn7 = 0;
 
                 while (true)
                 {
@@ -617,50 +584,50 @@ namespace MahoyoHDRepack
                             compressedData->Length = (int)u_zero;
                             return u_zero;
                         }
-                        @byte = pCompressed[cidx];
-                        uVar3 = headerData->Max_31_32;
-                        iVar7 = (int)(_7_2 - 1);
-                        iVar8 = iVar7;
-                        if (iVar7 < 0)
+                        curByte = pCompressed[cidx];
+                        dictMaskBitCount = headerData->Max_31_32_DictMaskBitCount;
+                        bitOffs = (int)(_7_2 - 1);
+                        nextBitOffs = bitOffs;
+                        if (bitOffs < 0)
                         {
-                            iVar8 = 7;
+                            nextBitOffs = 7;
                         }
-                        iVar9 = cidx + 1;
-                        if (-1 < iVar7)
+                        nextIndex = cidx + 1;
+                        if (-1 < bitOffs)
                         {
-                            iVar9 = cidx;
+                            nextIndex = cidx;
                         }
-                        uVar1 = FUN_5ba0(pCompressed, iVar9, iVar8, uVar3, (AllocatedStruct*)allocated, int2, &_7);
-                        if (((@byte >> ((byte)_7_2 & 0x1f)) & 1) == 0)
+                        readDictSeqResult = LenZu_ReadFromDictSequence(pCompressed, nextIndex, nextBitOffs, dictMaskBitCount, (DictionaryEntry*)dictionary, int2, &_7);
+                        if (((curByte >> ((byte)_7_2 & 0x1f)) & 1) == 0)
                         {
                             break;
                         }
-                        if ((int)uVar1 < 0) return (uint)-iVar9;
-                        uVar6 = (uint)(((int)_7 >> 0x1f) & 7);
-                        uVar2 = (uint)(_7 + uVar6);
-                        cidx = (int)uVar2 >> 3;
-                        iVar8 -= (int)((uVar2 & 7) - uVar6);
-                        if (7 < iVar8)
+                        if ((int)readDictSeqResult < 0) return (uint)-nextIndex;
+                        sgn7 = (uint)(((int)_7 >> 0x1f) & 7);
+                        _34_bitShift = (uint)(_7 + sgn7);
+                        cidx = (int)_34_bitShift >> 3;
+                        nextBitOffs -= (int)((_34_bitShift & 7) - sgn7);
+                        if (7 < nextBitOffs)
                         {
                             cidx += -1;
-                            iVar8 += -8;
+                            nextBitOffs += -8;
                         }
-                        if (iVar8 < 0)
+                        if (nextBitOffs < 0)
                         {
-                            iVar8 += 8;
+                            nextBitOffs += 8;
                             cidx += 1;
                         }
-                        iVar9 += cidx;
-                        uVar1 += headerData->_35;
-                        uVar3 = FUN_5ba0(pCompressed, iVar9, iVar8, uVar3, (AllocatedStruct*)allocated, int2, &_7);
-                        if ((int)uVar3 < 0)
+                        nextIndex += cidx;
+                        readDictSeqResult += headerData->_35;
+                        dictMaskBitCount = LenZu_ReadFromDictSequence(pCompressed, nextIndex, nextBitOffs, dictMaskBitCount, (DictionaryEntry*)dictionary, int2, &_7);
+                        if ((int)dictMaskBitCount < 0)
                         {
-                            return (uint)-iVar9;
+                            return (uint)-nextIndex;
                         }
-                        uVar6 = (uint)((int)_7 >> 0x1f) & 7;
-                        uVar2 = (uint)(_7 + uVar6);
-                        cidx = (int)uVar2 >> 3;
-                        _7_2 = (uint)(iVar8 - ((uVar2 & 7) - uVar6));
+                        sgn7 = (uint)((int)_7 >> 0x1f) & 7;
+                        _34_bitShift = (uint)(_7 + sgn7);
+                        cidx = (int)_34_bitShift >> 3;
+                        _7_2 = (uint)(nextBitOffs - ((_34_bitShift & 7) - sgn7));
                         if (7 < (int)_7_2)
                         {
                             _7_2 -= 8;
@@ -671,87 +638,87 @@ namespace MahoyoHDRepack
                             _7_2 += 8;
                             cidx += 1;
                         }
-                        cidx = iVar9 + cidx;
-                        uVar6 = 0;
-                        uVar2 = headerData->_34;
-                        @byte = (byte)uVar2;
-                        if (8 < (int)uVar2)
+                        cidx = nextIndex + cidx;
+                        sgn7 = 0;
+                        _34_bitShift = headerData->_34_BitShift;
+                        curByte = (byte)_34_bitShift;
+                        if (8 < (int)_34_bitShift)
                         {
-                            bVar10 = (byte)((0xffu >> (int)((-(int)_7_2 + 7u) & 0x1f)) & pCompressed[cidx]);
+                            maskedByte = (byte)((0xffu >> (int)((-(int)_7_2 + 7u) & 0x1f)) & pCompressed[cidx]);
                             if (_7_2 < 8)
                             {
-                                iVar8 = 0;
-                                b_zero = (byte)(_7_2 - 7);
+                                nextBitOffs = 0;
+                                var bitShift = (byte)(_7_2 - 7);
                                 if ((int)(_7_2 - 7) < 1)
                                 {
-                                    iVar8 = 1;
-                                    b_zero = (byte)(pCompressed[(long)cidx + 1] >> (b_zero + 8 & 0x1f)
-                                        | bVar10 << (-b_zero & 0x1f));
+                                    nextBitOffs = 1;
+                                    readMaskedByte = (byte)(pCompressed[(long)cidx + 1] >> (bitShift + 8 & 0x1f)
+                                        | maskedByte << (-bitShift & 0x1f));
                                 }
                                 else
                                 {
-                                    b_zero = (byte)(bVar10 >> (b_zero & 0x1f));
+                                    readMaskedByte = (byte)(maskedByte >> (bitShift & 0x1f));
                                 }
                             }
                             else
                             {
-                                iVar8 = -1;
+                                nextBitOffs = -1;
                             }
-                            uVar2 -= 8;
-                            cidx += iVar8;
-                            uVar6 = (uint)b_zero << ((byte)uVar2 & 0x1f);
+                            _34_bitShift -= 8;
+                            cidx += nextBitOffs;
+                            sgn7 = (uint)readMaskedByte << ((byte)_34_bitShift & 0x1f);
                         }
-                        if (0 < (int)uVar2)
+                        if (0 < (int)_34_bitShift)
                         {
-                            bVar10 = (byte)((byte)(0xff >> (-(int)_7_2 + 7 & 0x1f)) & pCompressed[cidx]);
-                            if ((_7_2 < 8) && (uVar2 - 1 < 8))
+                            maskedByte = (byte)((byte)(0xff >> (-(int)_7_2 + 7 & 0x1f)) & pCompressed[cidx]);
+                            if ((_7_2 < 8) && (_34_bitShift - 1 < 8))
                             {
-                                iVar8 = 0;
-                                iVar7 = (int)((_7_2 - uVar2) + 1);
-                                b_zero = (byte)iVar7;
-                                if (iVar7 < 1)
+                                nextBitOffs = 0;
+                                bitOffs = (int)((_7_2 - _34_bitShift) + 1);
+                                readMaskedByte = (byte)bitOffs;
+                                if (bitOffs < 1)
                                 {
-                                    iVar8 = 1;
-                                    b_zero = (byte)(pCompressed[(long)cidx + 1] >> ((sbyte)(_7_2 - uVar2) + 9 & 0x1f)
-                                        | bVar10 << (-b_zero & 0x1f));
+                                    nextBitOffs = 1;
+                                    readMaskedByte = (byte)(pCompressed[(long)cidx + 1] >> ((sbyte)(_7_2 - _34_bitShift) + 9 & 0x1f)
+                                        | maskedByte << (-readMaskedByte & 0x1f));
                                 }
                                 else
                                 {
-                                    b_zero = (byte)(bVar10 >> (b_zero & 0x1f));
+                                    readMaskedByte = (byte)(maskedByte >> (readMaskedByte & 0x1f));
                                 }
                             }
                             else
                             {
-                                iVar8 = -1;
+                                nextBitOffs = -1;
                             }
-                            uVar2 &= 0x80000007;
-                            if ((int)uVar2 < 0)
+                            _34_bitShift &= 0x80000007;
+                            if ((int)_34_bitShift < 0)
                             {
-                                uVar2 = (uVar2 - 1 | 0xfffffff8) + 1;
+                                _34_bitShift = (_34_bitShift - 1 | 0xfffffff8) + 1;
                             }
-                            uVar2 = _7_2 - uVar2;
-                            uVar4 = uVar2 - 8;
-                            if ((int)uVar2 < 8)
+                            _34_bitShift = _7_2 - _34_bitShift;
+                            uVar4 = _34_bitShift - 8;
+                            if ((int)_34_bitShift < 8)
                             {
-                                uVar4 = uVar2;
+                                uVar4 = _34_bitShift;
                             }
                             _7_2 = uVar4 + 8;
                             if (-1 < (int)uVar4)
                             {
                                 _7_2 = uVar4;
                             }
-                            cidx += iVar8;
-                            uVar6 |= b_zero;
+                            cidx += nextBitOffs;
+                            sgn7 |= readMaskedByte;
                         }
-                        if (0 < (int)uVar1)
+                        if (0 < (int)readDictSeqResult)
                         {
-                            uVar2 = headerData->_35;
-                            uVar5 = (ulong)uVar1;
+                            _34_bitShift = headerData->_35;
+                            uVar5 = (ulong)readDictSeqResult;
                             do
                             {
                                 if ((int)u_zero < fileLen)
                                 {
-                                    *pDecompressed = pDecompressed[-(long)(int)(uVar6 + (uVar3 << (@byte & 0x1f)) + uVar2)];
+                                    *pDecompressed = pDecompressed[-(long)(int)(sgn7 + (dictMaskBitCount << (int)(headerData->_34_BitShift & 0x1f)) + _34_bitShift)];
                                     pDecompressed += 1;
                                     u_zero += 1;
                                 }
@@ -760,11 +727,11 @@ namespace MahoyoHDRepack
                             while (uVar5 != 0);
                         }
                     }
-                    if ((int)uVar1 < 0) break;
-                    uVar2 = (uint)((int)_7 >> 0x1f & 7);
-                    uVar3 = (ulong)(_7 + uVar2);
-                    cidx = (int)uVar3 >> 3;
-                    _7_2 = (uint)(iVar8 - (int)((uVar3 & 7) - uVar2));
+                    if ((int)readDictSeqResult < 0) break;
+                    _34_bitShift = (uint)((int)_7 >> 0x1f & 7);
+                    dictMaskBitCount = (ulong)(_7 + _34_bitShift);
+                    cidx = (int)dictMaskBitCount >> 3;
+                    _7_2 = (uint)(nextBitOffs - (int)((dictMaskBitCount & 7) - _34_bitShift));
                     if (7 < (int)_7_2)
                     {
                         _7_2 -= 8;
@@ -775,36 +742,36 @@ namespace MahoyoHDRepack
                         _7_2 += 8;
                         cidx += 1;
                     }
-                    cidx = iVar9 + cidx;
-                    if (0 < (int)(uVar1 + 1))
+                    cidx = nextIndex + cidx;
+                    if (0 < (int)(readDictSeqResult + 1))
                     {
-                        uVar5 = (ulong)(uVar1 + 1);
+                        uVar5 = (ulong)(readDictSeqResult + 1);
                         do
                         {
                             if ((int)u_zero < fileLen)
                             {
-                                @byte = (byte)((byte)(0xff >> (7 - (int)_7_2 & 0x1f)) & pCompressed[cidx]);
+                                curByte = (byte)((byte)(0xff >> (7 - (int)_7_2 & 0x1f)) & pCompressed[cidx]);
                                 if (_7_2 < 8)
                                 {
-                                    iVar8 = 0;
-                                    b_zero = (byte)(_7_2 - 7);
+                                    nextBitOffs = 0;
+                                    readMaskedByte = (byte)(_7_2 - 7);
                                     if ((int)(_7_2 - 7) < 1)
                                     {
-                                        iVar8 = 1;
-                                        b_zero = (byte)(pCompressed[(long)cidx + 1] >> (b_zero + 8 & 0x1f)
-                                            | @byte << (-b_zero & 0x1f));
+                                        nextBitOffs = 1;
+                                        readMaskedByte = (byte)(pCompressed[(long)cidx + 1] >> (readMaskedByte + 8 & 0x1f)
+                                            | curByte << (-readMaskedByte & 0x1f));
                                     }
                                     else
                                     {
-                                        b_zero = (byte)(@byte >> (b_zero & 0x1f));
+                                        readMaskedByte = (byte)(curByte >> (readMaskedByte & 0x1f));
                                     }
                                 }
                                 else
                                 {
-                                    iVar8 = -1;
+                                    nextBitOffs = -1;
                                 }
-                                cidx += iVar8;
-                                *pDecompressed = b_zero;
+                                cidx += nextBitOffs;
+                                *pDecompressed = readMaskedByte;
                                 pDecompressed = pDecompressed + 1;
                                 u_zero += 1;
                             }
@@ -813,83 +780,116 @@ namespace MahoyoHDRepack
                         while (uVar5 != 0);
                     }
                 }
-                return (uint)-iVar9;
+                return (uint)-nextIndex;
             }
 
             [StructLayout(LayoutKind.Explicit)]
-            public struct AllocatedStruct
+            public struct DictionaryEntry
             {
                 [FieldOffset(0x0)] public uint _0;
-                [FieldOffset(0x4)] public uint _4;
-                [FieldOffset(0x8)] public uint _8;
-                [FieldOffset(0xc)] public byte _c;
+                [FieldOffset(0x4)] public uint Next2;
+                [FieldOffset(0x8)] public uint Next1;
+                [FieldOffset(0xc)] public byte Key;
             }
 
-            private static uint FUN_5ba0(byte* pCompressed, int param_2, int param_3, ulong param_4, AllocatedStruct* allocated, uint int2, int* _7)
+            private static int GetMaskFromBitCount(int bitCount)
             {
-                uint uVar1, uVar2, uVar5, uVar10, uVar11;
-                long lVar3, lVar6;
-                ulong uVar7, uVar8;
-                int iVar9;
-                byte bVar4;
-
-                uVar2 = 0;
-                uVar5 = 0xfffffff;
-                if ((int)param_4 < 1)
+                if (bitCount > 0)
                 {
-                    iVar9 = 0;
-                }
-                else if (param_4 < 0x20)
-                {
-                    iVar9 = (1 << ((byte)param_4 & 0x1f)) + (-1);
+                    if (bitCount < 0x20)
+                    {
+                        return (1 << bitCount) - 1;
+                    }
+                    else
+                    {
+                        return -1;
+                    }
                 }
                 else
                 {
-                    iVar9 = -1;
+                    return 0;
                 }
-                uVar1 = (uint)(iVar9 + 1);
-                if (uVar1 < 0x16a0a)
+            }
+
+            private static int GetDictionarySizeFromBitCount(int bitCount)
+            {
+                return GetDictionarySize(GetMaskFromBitCount(bitCount));
+            }
+
+            private static int GetDictionarySize(int lowMask)
+            {
+                Helpers.DAssert(BitOperations.PopCount((uint)lowMask + 1) == 1);
+                if (lowMask + 1 < 0x16a0a)
                 {
-                    uVar5 = (uint)((iVar9 + 2) * uVar1 >> 1);
+                    return (int)((uint)((lowMask + 2) * (lowMask + 1)) >> 1);
                 }
+                else
+                {
+                    return -1;
+                }
+            }
+
+            private static uint LenZu_ReadFromDictSequence(byte* pCompressed, int startIndex, int readShift, ulong numBits, DictionaryEntry* dictionary, uint int2, int* sequenceLength)
+            {
+                uint pow2, bytesRead, uVar10, uVar11;
+                long lVar3, readIndex;
+                ulong dictEntry, nextDictEntry;
+                int mask;
+                byte readValue;
+
+                bytesRead = 0;
+                if ((int)numBits < 1)
+                {
+                    mask = 0;
+                }
+                else if (numBits < 0x20)
+                {
+                    mask = (1 << ((byte)numBits & 0x1f)) + (-1);
+                }
+                else
+                {
+                    mask = -1;
+                }
+                pow2 = (uint)(mask + 1);
+                var dictionarySize = GetDictionarySize(mask);
                 uVar11 = 0xffffffff;
                 uVar10 = 0xffffffff;
-                if (uVar1 < int2)
+                if (pow2 < int2)
                 {
-                    if ((uVar1 != 0) && (uVar5 != 0))
+                    if ((pow2 != 0) && (dictionarySize != 0))
                     {
-                        lVar6 = (long)param_2;
-                        uVar7 = (ulong)(int2 - 1);
+                        readIndex = (long)startIndex;
+                        dictEntry = (ulong)(int2 - 1);
                         while (true)
                         {
-                            if ((uint)uVar7 < uVar1)
+                            if ((uint)dictEntry < pow2)
                             {
-                                *_7 = (int)uVar2;
-                                return (uint)uVar2;
+                                *sequenceLength = (int)bytesRead;
+                                return (uint)bytesRead;
                             }
-                            bVar4 = (byte)(pCompressed[lVar6] >> ((byte)param_3 & 0x1f) & 1);
-                            uVar8 = allocated[uVar7]._8;
-                            if (allocated[uVar8]._c != bVar4)
+                            readValue = (byte)(pCompressed[readIndex] >> ((byte)readShift & 0x1f) & 1);
+                            nextDictEntry = dictionary[dictEntry].Next1;
+                            if (dictionary[nextDictEntry].Key != readValue)
                             {
-                                uVar8 = allocated[uVar7]._4;
-                                if (allocated[uVar8]._c != bVar4) break;
+                                nextDictEntry = dictionary[dictEntry].Next2;
+                                if (dictionary[nextDictEntry].Key != readValue) break;
                             }
-                            iVar9 = param_3 + (-1);
-                            param_3 = iVar9;
-                            if (iVar9 < 0)
+                            var nextShift = readShift + (-1);
+                            readShift = nextShift;
+                            if (nextShift < 0)
                             {
-                                param_3 = 7;
+                                readShift = 7;
                             }
-                            lVar3 = lVar6 + 1;
-                            if (-1 < iVar9)
+                            var nextIndex = readIndex + 1;
+                            if (-1 < nextShift)
                             {
-                                lVar3 = lVar6;
+                                nextIndex = readIndex;
                             }
-                            uVar2 += 1;
-                            lVar6 = lVar3;
-                            uVar7 = uVar8;
+                            bytesRead += 1;
+                            readIndex = nextIndex;
+                            dictEntry = nextDictEntry;
                         }
-                        *_7 = (int)uVar2;
+                        *sequenceLength = (int)bytesRead;
                         return uint.MaxValue;
                     }
                     return uint.MaxValue;
@@ -899,16 +899,16 @@ namespace MahoyoHDRepack
                     do
                     {
                         uVar10 = uVar11;
-                        if (allocated->_0 != 0)
+                        if (dictionary->_0 != 0)
                         {
-                            *_7 = 1;
-                            uVar10 = uVar2;
+                            *sequenceLength = 1;
+                            uVar10 = bytesRead;
                         }
-                        uVar2 += 1;
-                        allocated = allocated + 1;
+                        bytesRead += 1;
+                        dictionary = dictionary + 1;
                         uVar11 = uVar10;
                     }
-                    while (uVar2 < int2);
+                    while (bytesRead < int2);
                 }
                 return uVar10;
             }

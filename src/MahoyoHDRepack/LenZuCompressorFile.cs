@@ -1,13 +1,11 @@
 ﻿using System;
 using System.Linq;
 using System.Numerics;
-using System.Reflection.Metadata.Ecma335;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using LibHac;
 using LibHac.Common;
 using LibHac.Fs;
-using LibHac.FsSrv;
-using SixLabors.ImageSharp.Processing;
 using Buffer = System.Buffer;
 
 namespace MahoyoHDRepack
@@ -33,7 +31,7 @@ namespace MahoyoHDRepack
             public uint _32; // [3..15]
             public uint Max_32_33; // max of _32 and byte at 0x33 in file
             public uint _34_BitShift; // [0..above field] + some other constraints
-            public uint _35; // [2..8]
+            public uint _35_DictSeqOffset; // [2..8]
             public int Max_31_32_DictMaskBitCount; // max of _31 and _32
             public uint _30;
         }
@@ -196,7 +194,7 @@ namespace MahoyoHDRepack
                                     y = incr;
                                 }
                                 while (incr < value);
-                                dictMaskBitCount = lz_data.Max_31_32_DictMaskBitCount;
+                                dictMaskBitCount = (uint)lz_data.Max_31_32_DictMaskBitCount;
                             }
                             baseIdx += (uint)lenBytesRead;
                             if (0 < (int)dictMaskBitCount)
@@ -307,10 +305,79 @@ namespace MahoyoHDRepack
 
             private static ulong CONCAT44(uint int2, uint baseIdx) => ((ulong)int2 << 32) | baseIdx;
 
-            private static int lz_read_int(uint* result, NativeSpan* dataSpan, int baseIdx, int rbi, int emr)
+            public readonly struct ReadByteFromBitOffsetResult(byte result, sbyte adjust)
+            {
+                public readonly byte Result = result;
+                public readonly sbyte Adjust = adjust;
+
+                [MethodImpl(MethodImplOptions.AggressiveInlining)]
+                public void Deconstruct(out byte result, out sbyte adjust)
+                {
+                    result = Result;
+                    adjust = Adjust;
+                }
+            }
+
+            /// <summary>
+            /// Reads an unaligned (big-endian) byte from the byte-aligned bitstream <paramref name="data"/>, with the bit with index <paramref name="bitIndex"/>
+            /// being the highest bit in the result.
+            /// </summary>
+            /// <remarks>
+            /// <para>Note: this is NOT safe in the face of byte 2 at <paramref name="data"/> being an invalid page. This implementation is compied basically
+            /// verbatim from the decomp.</para>
+            /// <para>
+            /// 
+            /// Consider the following example bytes (where each letter represents a single bit in the bitstream):
+            /// 
+            /// <code>
+            /// 7......0 7......0
+            /// abcdefgh ijklmnop
+            /// </code>
+            /// 
+            /// If we chose <c><paramref name="bitIndex"/> = 7</c>, that would mean that bit 7 in the first byte is the first bit to include in the result. As such,
+            /// this selects the whole first byte as its output:
+            /// 
+            /// <code>
+            /// 7......0 7......0
+            /// abcdefgh ijklmnop
+            /// --------
+            /// 
+            /// Output: abcdefgh
+            /// </code>
+            /// 
+            /// If we chose <c><paramref name="bitIndex"/> = 0</c>, that would mean that bit 0 in the first byte is the first bit to include in the result, and we have
+            /// this:
+            /// 
+            /// <code>
+            /// 7......0 7......0
+            /// abcdefgh ijklmnop
+            ///        --------
+            /// 
+            /// Output: hijklmno
+            /// </code>
+            /// 
+            /// Note how no matter what, the next byte at that alignment starts in the following aligned byte, hence the pointer-adjust always being 1.
+            /// 
+            /// </para>
+            /// <para>I find the choice of 7 to mean byte-aligned to be odd, but this is what the original code does. ¯\_(ツ)_/¯</para>
+            /// </remarks>
+            /// <param name="data">A pointer to the data to read from.</param>
+            /// <param name="bitIndex">The bit index to read at.</param>
+            /// <returns>A <see cref="ReadByteFromBitOffsetResult"/> containing both the result and the pointer-adjust. (The pointer-adjust is always 1 though.)</returns>
+            private static ReadByteFromBitOffsetResult ReadUnalignedByteByFirstBitIndex(byte* data, int bitIndex)
+            {
+                Helpers.Assert(bitIndex is >= 0 and < 8);
+
+                // NOTE: if this needs to be revisited, look at lz_read_int in decomp for its purest form
+                var maskedFirst = (0xff >> (7 - bitIndex)) & *data;
+                var result = (data[1] >> (bitIndex + 1)) | (maskedFirst << (7 - bitIndex));
+                return new((byte)result, 1);
+            }
+
+            private static int lz_read_int(uint* result, NativeSpan* dataSpan, int baseIdx, int subByteAlignment, int emr)
             {
                 byte maskedByte, resultVal, baseBitNo;
-                int reads, maxReads, idx, moveAmt, len;
+                int reads, maxReads, idx, len;
                 byte* pCur;
 
                 pCur = dataSpan->Data + baseIdx;
@@ -326,27 +393,9 @@ namespace MahoyoHDRepack
                     do
                     {
                         if (len <= idx + baseIdx) break;
-                        maskedByte = (byte)((byte)(0xff >> ((7 - rbi) & 0x1f)) & *pCur);
-                        if (rbi < 8)
-                        {
-                            moveAmt = 0;
-                            resultVal = (byte)(rbi - 7);
-                            if ((int)(rbi - 7) < 1)
-                            {
-                                moveAmt = 1;
-                                resultVal = (byte)((pCur[1] >> (((byte)rbi + 1) & 0x1f)) | (maskedByte << (-resultVal & 0x1f)));
-                            }
-                            else
-                            {
-                                resultVal = (byte)(maskedByte >> (resultVal & 0x1f));
-                            }
-                        }
-                        else
-                        {
-                            moveAmt = -1;
-                        }
+                        (resultVal, var moveAmt) = ReadUnalignedByteByFirstBitIndex(pCur, subByteAlignment);
                         idx += moveAmt;
-                        *result = *result | (uint)resultVal << (baseBitNo & 0x1f);
+                        *result = *result | (uint)resultVal << baseBitNo;
                         reads += 1;
                         baseBitNo += 8;
                         pCur = pCur + moveAmt;
@@ -382,7 +431,7 @@ namespace MahoyoHDRepack
                 lz_data->_32 = pData[2];
                 lz_data->Max_32_33 = pData[3];
                 lz_data->_34_BitShift = pData[4];
-                lz_data->_35 = pData[5];
+                lz_data->_35_DictSeqOffset = pData[5];
 
                 *out_2 = _7;
 
@@ -424,10 +473,10 @@ namespace MahoyoHDRepack
                     data->_32 = _32 = 0xf;
                 }
 
-                data->Max_31_32_DictMaskBitCount = _31;
+                data->Max_31_32_DictMaskBitCount = (int)_31;
                 if ((int)_31 < (int)_32)
                 {
-                    data->Max_31_32_DictMaskBitCount = _31 = _32;
+                    data->Max_31_32_DictMaskBitCount = (int)(_31 = _32);
                 }
 
                 _33 = data->Max_32_33;
@@ -460,14 +509,14 @@ namespace MahoyoHDRepack
                     data->_34_BitShift = _max_32_33 - _31;
                 }
 
-                if ((int)data->_35 < 2)
+                if ((int)data->_35_DictSeqOffset < 2)
                 {
-                    data->_35 = 2;
+                    data->_35_DictSeqOffset = 2;
                     return false;
                 }
-                if (8 < (int)data->_35)
+                if (8 < (int)data->_35_DictSeqOffset)
                 {
-                    data->_35 = 8;
+                    data->_35_DictSeqOffset = 8;
                     return false;
                 }
                 return (_mdiffltemax &&
@@ -558,9 +607,9 @@ namespace MahoyoHDRepack
                 return 0x20;
             }
 
-            private static uint FUN_5730(LzHeaderData* headerData, NativeSpan* decompressedData, NativeSpan* compressedData, uint baseIdx, int _7, uint fileLen, DictionaryEntry* dictionary, uint int2)
+            private static uint FUN_5730(LzHeaderData* headerData, NativeSpan* decompressedData, NativeSpan* compressedData, uint baseIdx, int prevBitPos, uint fileLen, DictionaryEntry* dictionary, uint int2)
             {
-                uint readDictSeqResult, _34_bitShift, uVar4, sgn7, _7_2, u_zero;
+                uint readDictSeqResult, _34_bitShift, uVar4, sgn7, u_zero;
                 ulong dictMaskBitCount, uVar5;
                 int iVar5, iVar6, bitOffs, cidx, nextBitOffs, nextIndex;
                 byte readMaskedByte, bVar8, curByte, maskedByte;
@@ -568,11 +617,10 @@ namespace MahoyoHDRepack
 
                 pDecompressed = decompressedData->Data;
                 pCompressed = compressedData->Data + baseIdx;
-                _7_2 = (uint)_7;
                 readMaskedByte = 0;
                 cidx = 0;
                 u_zero = 0;
-                _7 = 0;
+                var dictSequenceLength = 0;
                 sgn7 = 0;
 
                 while (true)
@@ -585,102 +633,96 @@ namespace MahoyoHDRepack
                             return u_zero;
                         }
                         curByte = pCompressed[cidx];
-                        dictMaskBitCount = headerData->Max_31_32_DictMaskBitCount;
-                        bitOffs = (int)(_7_2 - 1);
-                        nextBitOffs = bitOffs;
-                        if (bitOffs < 0)
+                        dictMaskBitCount = (uint)headerData->Max_31_32_DictMaskBitCount;
+                        nextBitOffs = (int)(prevBitPos - 1);
+                        if (nextBitOffs < 0) nextBitOffs = 7;
+
+                        // we only increment cidx when we wrapped into the next byte
+                        nextIndex = prevBitPos - 1 >= 0 ? cidx : cidx + 1;
+
+                        readDictSeqResult = LenZu_ReadFromDictSequence(pCompressed, nextIndex, nextBitOffs, dictMaskBitCount, dictionary, int2, &dictSequenceLength);
+
+                        if (((curByte >> ((byte)prevBitPos)) & 1) == 0)
                         {
-                            nextBitOffs = 7;
-                        }
-                        nextIndex = cidx + 1;
-                        if (-1 < bitOffs)
-                        {
-                            nextIndex = cidx;
-                        }
-                        readDictSeqResult = LenZu_ReadFromDictSequence(pCompressed, nextIndex, nextBitOffs, dictMaskBitCount, (DictionaryEntry*)dictionary, int2, &_7);
-                        if (((curByte >> ((byte)_7_2 & 0x1f)) & 1) == 0)
-                        {
+                            // break if the previous bit in the current byte was 0
                             break;
                         }
+
+                        // ReadFromDictSequenceFailed
                         if ((int)readDictSeqResult < 0) return (uint)-nextIndex;
-                        sgn7 = (uint)(((int)_7 >> 0x1f) & 7);
-                        _34_bitShift = (uint)(_7 + sgn7);
-                        cidx = (int)_34_bitShift >> 3;
-                        nextBitOffs -= (int)((_34_bitShift & 7) - sgn7);
+
+                        // load the sign bit of _7 into the low 3 bits of sgn7
+                        sgn7 = (uint)(((int)dictSequenceLength >> 0x1f) & 7);
+                        // effectively: sgn7 = _7 < 0 ? 7 : 0;
+                        // sgn6 = ..0sss (s = sign bit, S = inverse sign bit
+
+                        var tmp1 = (int)(dictSequenceLength + sgn7);
+                        var offsAmt = (int)tmp1 >> 3;
+                        nextBitOffs -= (int)((tmp1 & 7) - sgn7);
+
                         if (7 < nextBitOffs)
                         {
-                            cidx += -1;
+                            offsAmt += -1;
                             nextBitOffs += -8;
                         }
                         if (nextBitOffs < 0)
                         {
                             nextBitOffs += 8;
-                            cidx += 1;
+                            offsAmt += 1;
                         }
-                        nextIndex += cidx;
-                        readDictSeqResult += headerData->_35;
-                        dictMaskBitCount = LenZu_ReadFromDictSequence(pCompressed, nextIndex, nextBitOffs, dictMaskBitCount, (DictionaryEntry*)dictionary, int2, &_7);
-                        if ((int)dictMaskBitCount < 0)
+
+                        nextIndex += offsAmt;
+                        readDictSeqResult += headerData->_35_DictSeqOffset;
+
+                        dictMaskBitCount = LenZu_ReadFromDictSequence(pCompressed, nextIndex, nextBitOffs, dictMaskBitCount, dictionary, int2, &dictSequenceLength);
+                        // ReadFromDictSequence failed
+                        if ((int)dictMaskBitCount < 0) return (uint)-nextIndex;
+
+                        sgn7 = (uint)((int)dictSequenceLength >> 0x1f) & 7;
+                        var tmp2 = (int)(dictSequenceLength + sgn7);
+                        var offsAmt2 = (int)tmp2 >> 3;
+                        prevBitPos = (int)(nextBitOffs - ((tmp2 & 7) - sgn7));
+                        if (7 < (int)prevBitPos)
                         {
-                            return (uint)-nextIndex;
+                            prevBitPos -= 8;
+                            offsAmt2 += -1;
                         }
-                        sgn7 = (uint)((int)_7 >> 0x1f) & 7;
-                        _34_bitShift = (uint)(_7 + sgn7);
-                        cidx = (int)_34_bitShift >> 3;
-                        _7_2 = (uint)(nextBitOffs - ((_34_bitShift & 7) - sgn7));
-                        if (7 < (int)_7_2)
+                        if ((int)prevBitPos < 0)
                         {
-                            _7_2 -= 8;
-                            cidx += -1;
+                            prevBitPos += 8;
+                            offsAmt2 += 1;
                         }
-                        if ((int)_7_2 < 0)
-                        {
-                            _7_2 += 8;
-                            cidx += 1;
-                        }
-                        cidx = nextIndex + cidx;
-                        sgn7 = 0;
+
+                        cidx = nextIndex + offsAmt2;
+                        uint lookbehindBaseAmount = 0;
+
                         _34_bitShift = headerData->_34_BitShift;
                         curByte = (byte)_34_bitShift;
                         if (8 < (int)_34_bitShift)
                         {
-                            maskedByte = (byte)((0xffu >> (int)((-(int)_7_2 + 7u) & 0x1f)) & pCompressed[cidx]);
-                            if (_7_2 < 8)
-                            {
-                                nextBitOffs = 0;
-                                var bitShift = (byte)(_7_2 - 7);
-                                if ((int)(_7_2 - 7) < 1)
-                                {
-                                    nextBitOffs = 1;
-                                    readMaskedByte = (byte)(pCompressed[(long)cidx + 1] >> (bitShift + 8 & 0x1f)
-                                        | maskedByte << (-bitShift & 0x1f));
-                                }
-                                else
-                                {
-                                    readMaskedByte = (byte)(maskedByte >> (bitShift & 0x1f));
-                                }
-                            }
-                            else
-                            {
-                                nextBitOffs = -1;
-                            }
+                            (readMaskedByte, var nextBitOffsB) = ReadUnalignedByteByFirstBitIndex(&pCompressed[cidx], prevBitPos);
+                            nextBitOffs = nextBitOffsB;
+
                             _34_bitShift -= 8;
                             cidx += nextBitOffs;
-                            sgn7 = (uint)readMaskedByte << ((byte)_34_bitShift & 0x1f);
+                            lookbehindBaseAmount = (uint)readMaskedByte << ((byte)_34_bitShift & 0x1f);
                         }
                         if (0 < (int)_34_bitShift)
                         {
-                            maskedByte = (byte)((byte)(0xff >> (-(int)_7_2 + 7 & 0x1f)) & pCompressed[cidx]);
-                            if ((_7_2 < 8) && (_34_bitShift - 1 < 8))
+                            // note: this looks VERY SIMILAR to ReadUnalignedByteByFirstBitIndex, except that it has the extra _34_bitShift terms inserted
+                            // this is likely actually another case of that logic being inlined (maybe manually, hopefully by the compiler), and all the others
+                            // just don't use that bitshift as a meaningful parameter (they always set it to 0, maybe?)
+                            maskedByte = (byte)((byte)(0xff >> (7 - prevBitPos)) & pCompressed[cidx]);
+                            if ((prevBitPos < 8) && (_34_bitShift - 1 < 8))
                             {
                                 nextBitOffs = 0;
-                                bitOffs = (int)((_7_2 - _34_bitShift) + 1);
+                                bitOffs = (int)((prevBitPos - _34_bitShift) + 1);
                                 readMaskedByte = (byte)bitOffs;
                                 if (bitOffs < 1)
                                 {
                                     nextBitOffs = 1;
-                                    readMaskedByte = (byte)(pCompressed[(long)cidx + 1] >> ((sbyte)(_7_2 - _34_bitShift) + 9 & 0x1f)
-                                        | maskedByte << (-readMaskedByte & 0x1f));
+                                    readMaskedByte = (byte)(pCompressed[(long)cidx + 1] >> ((sbyte)(prevBitPos - _34_bitShift) + 9 & 0x1f)
+                                        | maskedByte << (-(sbyte)readMaskedByte & 0x1f));
                                 }
                                 else
                                 {
@@ -696,29 +738,29 @@ namespace MahoyoHDRepack
                             {
                                 _34_bitShift = (_34_bitShift - 1 | 0xfffffff8) + 1;
                             }
-                            _34_bitShift = _7_2 - _34_bitShift;
+                            _34_bitShift = (uint)(prevBitPos - _34_bitShift);
                             uVar4 = _34_bitShift - 8;
                             if ((int)_34_bitShift < 8)
                             {
                                 uVar4 = _34_bitShift;
                             }
-                            _7_2 = uVar4 + 8;
+                            prevBitPos = (int)uVar4 + 8;
                             if (-1 < (int)uVar4)
                             {
-                                _7_2 = uVar4;
+                                prevBitPos = (int)uVar4;
                             }
                             cidx += nextBitOffs;
-                            sgn7 |= readMaskedByte;
+                            lookbehindBaseAmount |= readMaskedByte;
                         }
                         if (0 < (int)readDictSeqResult)
                         {
-                            _34_bitShift = headerData->_35;
+                            _34_bitShift = headerData->_35_DictSeqOffset;
                             uVar5 = (ulong)readDictSeqResult;
                             do
                             {
                                 if ((int)u_zero < fileLen)
                                 {
-                                    *pDecompressed = pDecompressed[-(long)(int)(sgn7 + (dictMaskBitCount << (int)(headerData->_34_BitShift & 0x1f)) + _34_bitShift)];
+                                    *pDecompressed = pDecompressed[-(long)(int)(lookbehindBaseAmount + (dictMaskBitCount << (int)(headerData->_34_BitShift & 0x1f)) + _34_bitShift)];
                                     pDecompressed += 1;
                                     u_zero += 1;
                                 }
@@ -728,18 +770,18 @@ namespace MahoyoHDRepack
                         }
                     }
                     if ((int)readDictSeqResult < 0) break;
-                    _34_bitShift = (uint)((int)_7 >> 0x1f & 7);
-                    dictMaskBitCount = (ulong)(_7 + _34_bitShift);
+                    _34_bitShift = (uint)((int)dictSequenceLength >> 0x1f & 7);
+                    dictMaskBitCount = (ulong)(dictSequenceLength + _34_bitShift);
                     cidx = (int)dictMaskBitCount >> 3;
-                    _7_2 = (uint)(nextBitOffs - (int)((dictMaskBitCount & 7) - _34_bitShift));
-                    if (7 < (int)_7_2)
+                    prevBitPos = (int)(nextBitOffs - (int)((dictMaskBitCount & 7) - _34_bitShift));
+                    if (7 < (int)prevBitPos)
                     {
-                        _7_2 -= 8;
+                        prevBitPos -= 8;
                         cidx += -1;
                     }
-                    if ((int)_7_2 < 0)
+                    if ((int)prevBitPos < 0)
                     {
-                        _7_2 += 8;
+                        prevBitPos += 8;
                         cidx += 1;
                     }
                     cidx = nextIndex + cidx;
@@ -750,27 +792,8 @@ namespace MahoyoHDRepack
                         {
                             if ((int)u_zero < fileLen)
                             {
-                                curByte = (byte)((byte)(0xff >> (7 - (int)_7_2 & 0x1f)) & pCompressed[cidx]);
-                                if (_7_2 < 8)
-                                {
-                                    nextBitOffs = 0;
-                                    readMaskedByte = (byte)(_7_2 - 7);
-                                    if ((int)(_7_2 - 7) < 1)
-                                    {
-                                        nextBitOffs = 1;
-                                        readMaskedByte = (byte)(pCompressed[(long)cidx + 1] >> (readMaskedByte + 8 & 0x1f)
-                                            | curByte << (-readMaskedByte & 0x1f));
-                                    }
-                                    else
-                                    {
-                                        readMaskedByte = (byte)(curByte >> (readMaskedByte & 0x1f));
-                                    }
-                                }
-                                else
-                                {
-                                    nextBitOffs = -1;
-                                }
-                                cidx += nextBitOffs;
+                                (readMaskedByte, var nextBitOffsB) = ReadUnalignedByteByFirstBitIndex(&pCompressed[cidx], prevBitPos);
+                                cidx += nextBitOffsB;
                                 *pDecompressed = readMaskedByte;
                                 pDecompressed = pDecompressed + 1;
                                 u_zero += 1;

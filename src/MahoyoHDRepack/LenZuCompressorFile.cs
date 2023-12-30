@@ -95,7 +95,7 @@ namespace MahoyoHDRepack
                 public byte* Data;
                 public int Length;
                 public int Padding;
-                public ulong Unk;
+                public ulong Checksum;
             }
 
 #pragma warning disable IDE1006 // Naming Styles
@@ -129,7 +129,7 @@ namespace MahoyoHDRepack
                     offset = readBytes + lenBytesRead + offset;
                     lenBytesRead = lz_read_int(&baseIdx, compressedSpan, offset, 7, 0x20);
                     var local_EBX_213 = offset + lenBytesRead;
-                    var local_80 = CONCAT44(huffTableBitCount, baseIdx);
+                    var checksum = CONCAT44(huffTableBitCount, baseIdx);
                     int iVar3 = lz_read_int(&baseIdx, compressedSpan, local_EBX_213, 7, 0x20);
                     var int2_2 = local_EBX_213 + iVar3;
                     lenBytesRead = lz_read_early_data(&lz_data, compressedSpan, int2_2, 7, &subByteAlignment);
@@ -265,23 +265,8 @@ namespace MahoyoHDRepack
                                 if (0 < (int)finalLength)
                                 {
                                     NativeMemory.Free(table);
-                                    var pbVar3 = pSVar2->Data;
-                                    ReadOnlySpan<int> lut = [0xe9, 0x11f, 0x137, 0x1b1];
-                                    ulong l3 = 0;
-                                    if (pSVar2->Length != 0)
-                                    {
-                                        do
-                                        {
-                                            var incr = (uint)_0;
-                                            a6 = incr + 1;
-                                            _0 = (ulong)a6;
-                                            l3 = (ulong)((long)(l3 + *pbVar3) * (long)lut[(int)(incr & 3)]);
-                                            pbVar3 = pbVar3 + 1;
-                                        }
-                                        while (a6 < (uint)pSVar2->Length);
-                                    }
-                                    pSVar2->Unk = l3;
-                                    if (l3 != local_80)
+                                    var l3 = ComputeChecksum(pSVar2);
+                                    if (l3 != checksum)
                                     {
                                         return -10;
                                     }
@@ -294,7 +279,30 @@ namespace MahoyoHDRepack
                 return -3;
             }
 
-            private static ulong CONCAT44(uint int2, uint baseIdx) => ((ulong)int2 << 32) | baseIdx;
+            private static ulong ComputeChecksum(NativeSpan* dataSpan)
+            {
+                ReadOnlySpan<int> lut = [0xe9, 0x115, 0x137, 0x1b1];
+                ulong l3 = 0;
+                ulong a6;
+                ulong _0 = 0;
+                var data = dataSpan->Data;
+                if (dataSpan->Length != 0)
+                {
+                    do
+                    {
+                        var incr = (uint)_0;
+                        a6 = incr + 1;
+                        _0 = (ulong)a6;
+                        l3 = (ulong)((long)(l3 + *data) * (long)lut[(int)(incr & 3)]);
+                        data = data + 1;
+                    }
+                    while (a6 < (uint)dataSpan->Length);
+                }
+                dataSpan->Checksum = l3;
+                return l3;
+            }
+
+            private static ulong CONCAT44(uint hi, uint lo) => ((ulong)hi << 32) | lo;
 
             public readonly struct ReadByteFromBitOffsetResult(byte result, sbyte adjust)
             {

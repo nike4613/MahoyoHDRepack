@@ -79,7 +79,11 @@ namespace MahoyoHDRepack
 
             for (var i = 0; i < entries.Length; i++)
             {
-                nameToIdx.Add(entries[i].FileName, i);
+                // some archives have the same file in multiple times...
+                if (!nameToIdx.TryAdd(entries[i].FileName, i))
+                {
+                    nameToIdx.Add(entries[i].FileName + i, i);
+                }
             }
         }
 

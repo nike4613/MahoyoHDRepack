@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using LibHac;
@@ -15,7 +16,7 @@ internal static class Utils
         var val = 0;
         for (var i = 0; i < str.Length; i++)
         {
-            val *= 10;
+            val *= 16;
             var c = str[i];
             if (c is >= (byte)'0' and <= (byte)'9')
             {
@@ -51,6 +52,19 @@ internal static class Utils
 
     public static ReadOnlySpan<byte> AsSpan(this in Path path)
         => path.GetString()[0..path.GetLength()];
+
+    public static ReadOnlySpan<byte> GetLastChild(this in Path path)
+    {
+        var fullData = path.AsSpan();
+        var pathCopy = default(Path);
+        pathCopy.Initialize(path).ThrowIfFailure();
+        var result = pathCopy.RemoveChild();
+        if (!result.IsSuccess()) return default;
+        return fullData.Slice(pathCopy.GetLength());
+    }
+
+    public static ReadOnlySpan<byte> SliceToFirstNull(this ReadOnlySpan<byte> span)
+        => span.Slice(0, span.IndexOf((byte)0) is { } i && i < 0 ? span.Length : i);
 
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

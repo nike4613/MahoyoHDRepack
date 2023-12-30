@@ -1,7 +1,9 @@
-﻿using System.CommandLine;
+﻿using System;
+using System.CommandLine;
 using System.CommandLine.Invocation;
 using System.CommandLine.IO;
 using System.IO;
+using LibHac.Fs.Fsa;
 using LibHac.FsSystem;
 using MahoyoHDRepack;
 using MahoyoHDRepack.Verbs;
@@ -47,11 +49,45 @@ var outDir = new Option<DirectoryInfo>(
 
 rootCmd.AddGlobalOption(ryuBasePath);
 
+void ExecWithRootFs(InvocationContext context, Action<IFileSystem> action)
+{
+    var xciFileInfo = context.ParseResult.GetValueForOption(xciFile);
+
+    if (xciFileInfo is not null)
+    {
+        var ryuBase = context.ParseResult.GetValueForOption(ryuBasePath);
+
+        Common.InitRyujinx(ryuBase, out _, out var vfs);
+
+        // attempt to mount the XCI file
+        using var xciHandle = File.OpenHandle(xciFileInfo.FullName, FileMode.Open, FileAccess.Read, FileShare.Read, FileOptions.RandomAccess);
+        using var xciStorage = new RandomAccessStorage(xciHandle);
+
+        using var romfs = XciHelpers.MountXci(xciStorage, vfs);
+
+        action(romfs);
+    }
+    else
+    {
+        var dir = context.ParseResult.GetValueForOption(gameDir);
+        if (dir is null)
+        {
+            context.ExitCode = -1;
+            context.Console.Error.WriteLine("If --xci is not specified, --game-dir must be");
+            return;
+        }
+
+        using var rootfs = new LocalFileSystem(dir.FullName);
+
+        action(rootfs);
+    }
+}
+
+var raw = new Option<bool>("--raw", "Do not uncompress the file if it compressed");
+var noArchive = new Option<bool>("--no-arc", "Do not treat archives as directories");
 {
     var path = new Argument<string>("path", "The path of the file in the archive to extract");
     var outLoc = new Argument<string>("to", "The location to write the file");
-    var raw = new Option<bool>("--raw", "Do not uncompress the file if it compressed");
-    var noArchive = new Option<bool>("--no-arc", "Do not treat archives as directories");
 
     var cmd = new Command("extract", "Extracts a single file from the RomFS.")
     {
@@ -61,43 +97,32 @@ rootCmd.AddGlobalOption(ryuBasePath);
     cmd.SetHandler(Exec);
     rootCmd.Add(cmd);
 
-    void Exec(InvocationContext context)
+    void Exec(InvocationContext context) => ExecWithRootFs(context, rootfs =>
     {
-        var xciFileInfo = context.ParseResult.GetValueForOption(xciFile);
+        ExtractFile.Run(rootfs,
+            context.ParseResult.GetValueForArgument(path), context.ParseResult.GetValueForArgument(outLoc),
+            context.ParseResult.GetValueForOption(raw), context.ParseResult.GetValueForOption(noArchive));
+    });
+}
 
-        if (xciFileInfo is not null)
-        {
-            var ryuBase = context.ParseResult.GetValueForOption(ryuBasePath);
+{
+    var targetDir = new Argument<DirectoryInfo>("targetDir", "The location to extract everything to");
 
-            Common.InitRyujinx(ryuBase, out _, out var vfs);
+    var cmd = new Command("extract-all", "Extracts the entire virtual filesystem to a target directory")
+    {
+        xciFile, targetDir, raw, noArchive, gameDir
+    };
 
-            // attempt to mount the XCI file
-            using var xciHandle = File.OpenHandle(xciFileInfo.FullName, FileMode.Open, FileAccess.Read, FileShare.Read, FileOptions.RandomAccess);
-            using var xciStorage = new RandomAccessStorage(xciHandle);
+    cmd.SetHandler(Exec);
+    rootCmd.Add(cmd);
 
-            using var romfs = XciHelpers.MountXci(xciStorage, vfs);
-
-            ExtractFile.Run(romfs,
-                context.ParseResult.GetValueForArgument(path), context.ParseResult.GetValueForArgument(outLoc),
-                context.ParseResult.GetValueForOption(raw), context.ParseResult.GetValueForOption(noArchive));
-        }
-        else
-        {
-            var dir = context.ParseResult.GetValueForOption(gameDir);
-            if (dir is null)
-            {
-                context.ExitCode = -1;
-                context.Console.Error.WriteLine("If --xci is not specified, --game-dir must be");
-                return;
-            }
-
-            using var rootfs = new LocalFileSystem(dir.FullName);
-
-            ExtractFile.Run(rootfs,
-                context.ParseResult.GetValueForArgument(path), context.ParseResult.GetValueForArgument(outLoc),
-                context.ParseResult.GetValueForOption(raw), context.ParseResult.GetValueForOption(noArchive));
-        }
-    }
+    void Exec(InvocationContext context) => ExecWithRootFs(context, rootfs =>
+    {
+        ExtractAll.Run(rootfs,
+            context.ParseResult.GetValueForArgument(targetDir),
+            context.ParseResult.GetValueForOption(raw),
+            context.ParseResult.GetValueForOption(noArchive));
+    });
 }
 
 {

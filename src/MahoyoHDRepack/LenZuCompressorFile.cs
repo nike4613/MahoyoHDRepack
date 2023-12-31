@@ -150,7 +150,7 @@ namespace MahoyoHDRepack
                         // fill the table with the default values
                         for (var i = 0; i < tableEntryCount; i++)
                         {
-                            table[i]._0 = 0;
+                            table[i].TableConstructOrderVal = 0;
                             table[i].Child2 = uint.MaxValue;
                             table[i].Child1 = uint.MaxValue;
                             table[i].BitValue = 0xff;
@@ -183,70 +183,66 @@ namespace MahoyoHDRepack
                                 {
                                     lenBytesRead += lz_read_int(out tableIndex, compressedData, baseIdx + lenBytesRead, subByteAlignment, huffEntryByteCountRoundedUp);
                                 }
-                                lenBytesRead += lz_read_int(out table[tableIndex]._0, compressedSpan, baseIdx + lenBytesRead, subByteAlignment, 0x20);
+                                lenBytesRead += lz_read_int(out table[tableIndex].TableConstructOrderVal, compressedSpan, baseIdx + lenBytesRead, subByteAlignment, 0x20);
                             }
 
                             baseIdx += lenBytesRead;
 
-
-                            _zero = GetMaskFromBitCount(lz_data.Max_31_32_HuffTableBitCount);
+                            // build up the rest of the table
                             var currentEntry = firstRealTableEntry;
-                            uint a7, a8, a6, u1, u5, u3, u2;
+                            uint idxOfSmallest, smallest, sndSmallest, entry_0, u3, u2;
                             while (true)
                             {
-                                a7 = uint.MaxValue;
-                                a8 = uint.MaxValue >> 4;
-                                a6 = uint.MaxValue >> 4;
-                                var incr = uint.MaxValue;
-                                var l3 = _0;
-                                var curAlloc = table;
-                                ulong uVar3 = (uint)_0;
+                                idxOfSmallest = uint.MaxValue;
+                                smallest = uint.MaxValue >> 4;
+                                sndSmallest = uint.MaxValue >> 4;
+
+                                var idxOfSndSmallest = uint.MaxValue;
+                                var curEntry = table;
+                                var counter = 0u;
+                                var iterVal = 0u;
+
                                 if (currentEntry == 0) break;
                                 do
                                 {
-                                    u1 = curAlloc->_0;
-                                    u5 = (uint)l3;
-                                    if ((u1 != 0) && (curAlloc->BitValue == 0xff))
+                                    entry_0 = curEntry->TableConstructOrderVal;
+                                    if ((entry_0 != 0) && (curEntry->BitValue == 0xff))
                                     {
-                                        uVar3 = (ulong)((int)uVar3 + 1);
-                                        u3 = u1;
-                                        u2 = u5;
-                                        if (a6 <= u1)
+                                        // the entry has not had its bitvalue initialized, but is important
+                                        counter++;
+
+                                        if (sndSmallest > entry_0)
                                         {
-                                            u3 = a6;
-                                            u2 = incr;
+                                            sndSmallest = entry_0;
+                                            idxOfSndSmallest = iterVal;
                                         }
-                                        incr = u2;
-                                        a6 = u3;
-                                        if (u1 < a8)
+
+                                        if (smallest > entry_0)
                                         {
-                                            incr = a7;
-                                            a6 = a8;
-                                            a8 = u1;
-                                            a7 = u5;
+                                            idxOfSndSmallest = idxOfSmallest;
+                                            sndSmallest = smallest;
+                                            smallest = entry_0;
+                                            idxOfSmallest = iterVal;
                                         }
                                     }
-                                    else
-                                    {
-                                        //Debugger.Break();
-                                    }
-                                    curAlloc = curAlloc + 1;
-                                    l3 = u5 + 1;
+
+                                    curEntry++;
+                                    iterVal++;
                                 }
-                                while (u5 + 1 < currentEntry);
-                                if ((uint)uVar3 < 2) break;
-                                l3 = currentEntry;
-                                table[currentEntry]._0 = table[incr]._0 + table[a7]._0;
-                                table[currentEntry].Child2 = a7;
-                                table[currentEntry].Child1 = incr;
-                                table[a7].BitValue = 1;
-                                table[incr].BitValue = 0;
+                                while (iterVal < currentEntry);
+                                if (counter < 2) break;
+
+                                table[currentEntry].TableConstructOrderVal = table[idxOfSndSmallest].TableConstructOrderVal + table[idxOfSmallest].TableConstructOrderVal;
+                                table[currentEntry].Child2 = idxOfSmallest;
+                                table[currentEntry].Child1 = idxOfSndSmallest;
+                                table[idxOfSmallest].BitValue = 1;
+                                table[idxOfSndSmallest].BitValue = 0;
 
                                 currentEntry += 1;
                             }
-                            if (currentEntry <= _zero + 1)
+                            if (currentEntry <= firstRealTableEntry)
                             {
-                                table[a7].BitValue = 1;
+                                table[idxOfSmallest].BitValue = 1;
                             }
                             if (currentEntry != 0)
                             {
@@ -381,10 +377,10 @@ namespace MahoyoHDRepack
                         if (len <= idx + baseIdx) break;
                         (resultVal, var moveAmt) = ReadUnalignedByteByFirstBitIndex(pCur, subByteAlignment);
                         idx += moveAmt;
-                        result = result | ((uint)resultVal << baseBitNo);
+                        result |= (uint)resultVal << baseBitNo;
                         reads += 1;
                         baseBitNo += 8;
-                        pCur = pCur + moveAmt;
+                        pCur += moveAmt;
                     }
                     while (reads < bytesToRead);
                 }
@@ -581,7 +577,7 @@ namespace MahoyoHDRepack
                 return 0x20;
             }
 
-            private static uint DecompressData(LzHeaderData* headerData, NativeSpan* decompressedData, NativeSpan* compressedData, int baseIdx, int prevBitPos, uint fileLen, HuffmanTableEntry* huffmanTable, uint firstHuffTableEntry)
+            private static uint DecompressData(LzHeaderData* headerData, NativeSpan* decompressedData, NativeSpan* compressedData, int baseIdx, int prevBitPos, uint fileLen, HuffmanTableEntry* huffmanTable, uint startEntry)
             {
                 uint resultDictEntry, _34_bitShift, uVar4, sgn7, u_zero;
                 ulong uVar5;
@@ -614,7 +610,7 @@ namespace MahoyoHDRepack
                         // we only increment cidx when we wrapped into the next byte
                         nextIndex = prevBitPos - 1 >= 0 ? cidx : cidx + 1;
 
-                        resultDictEntry = LenZu_DecodeHuffmanSequence(pCompressed, nextIndex, nextBitOffs, tableBitCount, huffmanTable, firstHuffTableEntry, &dictBitLength);
+                        resultDictEntry = LenZu_DecodeHuffmanSequence(pCompressed, nextIndex, nextBitOffs, tableBitCount, huffmanTable, startEntry, &dictBitLength);
 
                         if (((curByte >> ((byte)prevBitPos)) & 1) == 0)
                         {
@@ -648,7 +644,7 @@ namespace MahoyoHDRepack
                         nextIndex += offsAmt;
                         resultDictEntry += headerData->_35_DictEntryOffset;
 
-                        var sndDictResul = LenZu_DecodeHuffmanSequence(pCompressed, nextIndex, nextBitOffs, tableBitCount, huffmanTable, firstHuffTableEntry, &dictBitLength);
+                        var sndDictResul = LenZu_DecodeHuffmanSequence(pCompressed, nextIndex, nextBitOffs, tableBitCount, huffmanTable, startEntry, &dictBitLength);
                         // ReadFromDictSequence failed
                         if ((int)sndDictResul < 0) return (uint)-nextIndex;
 
@@ -783,7 +779,7 @@ namespace MahoyoHDRepack
             [StructLayout(LayoutKind.Explicit)]
             public struct HuffmanTableEntry
             {
-                [FieldOffset(0x0)] public uint _0;
+                [FieldOffset(0x0)] public uint TableConstructOrderVal;
                 [FieldOffset(0x4)] public uint Child2;
                 [FieldOffset(0x8)] public uint Child1;
                 [FieldOffset(0xc)] public byte BitValue;
@@ -828,7 +824,7 @@ namespace MahoyoHDRepack
 
             // this appears to be a huffman decoder?
             // returns the dictionary entry index after the read
-            private static uint LenZu_DecodeHuffmanSequence(byte* pCompressed, int startIndex, int readShift, int numBits, HuffmanTableEntry* table, uint firstTableEntryPLus1, int* bitSequenceLength)
+            private static uint LenZu_DecodeHuffmanSequence(byte* pCompressed, int startIndex, int readShift, int numBits, HuffmanTableEntry* table, uint startEntry, int* bitSequenceLength)
             {
                 uint firstRealHuffEntry, bitsRead, resultVal, persistResultVar;
                 long lVar3, readIndex;
@@ -842,12 +838,12 @@ namespace MahoyoHDRepack
                 var tblSize = GetDictionarySize(mask);
                 persistResultVar = 0xffffffff;
                 resultVal = 0xffffffff;
-                if (firstRealHuffEntry < firstTableEntryPLus1)
+                if (firstRealHuffEntry < startEntry)
                 {
                     if ((firstRealHuffEntry != 0) && (tblSize != 0))
                     {
                         readIndex = startIndex;
-                        tableEntry = firstTableEntryPLus1 - 1;
+                        tableEntry = startEntry - 1;
                         while (true)
                         {
                             if ((uint)tableEntry < firstRealHuffEntry)
@@ -882,13 +878,13 @@ namespace MahoyoHDRepack
                     }
                     return uint.MaxValue;
                 }
-                if (firstTableEntryPLus1 != 0)
+                if (startEntry != 0)
                 {
                     var iterVar = 0u;
                     do
                     {
                         resultVal = persistResultVar;
-                        if (table->_0 != 0)
+                        if (table->TableConstructOrderVal != 0)
                         {
                             *bitSequenceLength = 1;
                             resultVal = iterVar;
@@ -897,7 +893,7 @@ namespace MahoyoHDRepack
                         table = table + 1;
                         persistResultVar = resultVal;
                     }
-                    while (iterVar < firstTableEntryPLus1);
+                    while (iterVar < startEntry);
                 }
                 return resultVal;
             }

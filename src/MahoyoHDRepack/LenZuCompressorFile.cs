@@ -160,15 +160,13 @@ namespace MahoyoHDRepack
                             uint firstRealTableEntry = (uint)GetMaskFromBitCount((int)lz_data.Max_31_32_HuffTableBitCount) + 1;
                             uint _1 = 1;
                             uint value = 0;
-                            int read_int_arg5 = (int)((((int)(lz_data.Max_31_32_HuffTableBitCount + 7) >> 0x1f) & 7u) + lz_data.Max_31_32_HuffTableBitCount + 7) >> 3;
-                            var local_ac = read_int_arg5;
-                            lenBytesRead = lz_read_int(&value, compressedData, (int)baseIdx, subByteAlignment, read_int_arg5);
-                            var read_int_arg5_2 = local_ac;
+                            int huffEntryByteCountRoundedUp = (lz_data.Max_31_32_HuffTableBitCount + 7) / 8;
+                            lenBytesRead = lz_read_int(&value, compressedData, (int)baseIdx, subByteAlignment, huffEntryByteCountRoundedUp);
                             if (value == 0)
                             {
                                 value = firstRealTableEntry;
                             }
-                            if (firstRealTableEntry * 4 < (read_int_arg5 + 4) * value)
+                            if (firstRealTableEntry * 4 < (huffEntryByteCountRoundedUp + 4) * value)
                             {
                                 _1 = uint.MaxValue;
                                 value = firstRealTableEntry;
@@ -184,7 +182,7 @@ namespace MahoyoHDRepack
                                     if (0 < (int)x)
                                     {
                                         _1 = 0;
-                                        offset = lz_read_int(&_1, compressedData, (int)baseIdx + lenBytesRead, subByteAlignment, read_int_arg5_2);
+                                        offset = lz_read_int(&_1, compressedData, (int)baseIdx + lenBytesRead, subByteAlignment, huffEntryByteCountRoundedUp);
                                         lenBytesRead += offset;
                                         huffTableBitCount = _1;
                                     }
@@ -384,7 +382,7 @@ namespace MahoyoHDRepack
                 reads = 0;
                 *result = 0;
                 resultVal = 0;
-                maxReads = ((int)((((emr + (-1)) >> 0x1f) & 7) + emr + (-1)) >> 3) + 1;
+                maxReads = ((emr - 1) / 8) + 1;
                 if (0 < maxReads)
                 {
                     len = dataSpan->Length;

@@ -190,7 +190,7 @@ namespace MahoyoHDRepack
 
 
                             _zero = GetMaskFromBitCount(lz_data.Max_31_32_HuffTableBitCount);
-                            var initialTableEntryPlusOne = (uint)_zero + 1u;
+                            var currentEntry = firstRealTableEntry;
                             uint a7, a8, a6, u1, u5, u3, u2;
                             while (true)
                             {
@@ -201,7 +201,7 @@ namespace MahoyoHDRepack
                                 var l3 = _0;
                                 var curAlloc = table;
                                 ulong uVar3 = (uint)_0;
-                                if (initialTableEntryPlusOne == 0) break;
+                                if (currentEntry == 0) break;
                                 do
                                 {
                                     u1 = curAlloc->_0;
@@ -233,26 +233,26 @@ namespace MahoyoHDRepack
                                     curAlloc = curAlloc + 1;
                                     l3 = u5 + 1;
                                 }
-                                while (u5 + 1 < initialTableEntryPlusOne);
+                                while (u5 + 1 < currentEntry);
                                 if ((uint)uVar3 < 2) break;
-                                l3 = initialTableEntryPlusOne;
-                                table[initialTableEntryPlusOne]._0 = table[incr]._0 + table[a7]._0;
-                                table[initialTableEntryPlusOne].Child2 = a7;
-                                table[initialTableEntryPlusOne].Child1 = incr;
+                                l3 = currentEntry;
+                                table[currentEntry]._0 = table[incr]._0 + table[a7]._0;
+                                table[currentEntry].Child2 = a7;
+                                table[currentEntry].Child1 = incr;
                                 table[a7].BitValue = 1;
                                 table[incr].BitValue = 0;
 
-                                initialTableEntryPlusOne += 1;
+                                currentEntry += 1;
                             }
-                            if (initialTableEntryPlusOne <= _zero + 1)
+                            if (currentEntry <= _zero + 1)
                             {
                                 table[a7].BitValue = 1;
                             }
-                            if (initialTableEntryPlusOne != 0)
+                            if (currentEntry != 0)
                             {
                                 var pSVar2 = decompressedData;
                                 var dataCopy = lz_data;
-                                var finalLength = DecompressData(&dataCopy, decompressedData, compressedData, baseIdx, subByteAlignment, fileLen, table, initialTableEntryPlusOne);
+                                var finalLength = DecompressData(&dataCopy, decompressedData, compressedData, baseIdx, subByteAlignment, fileLen, table, currentEntry);
                                 if (0 < (int)finalLength)
                                 {
                                     NativeMemory.Free(table);

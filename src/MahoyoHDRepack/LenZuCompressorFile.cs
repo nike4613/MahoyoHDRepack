@@ -175,21 +175,17 @@ namespace MahoyoHDRepack
                                 x = -1;
                                 numEntriesToFill = firstRealTableEntry;
                             }
-                            var index = 0u;
-                            if (numEntriesToFill != 0)
+
+                            for (var index = 0u; index < numEntriesToFill; index++)
                             {
-                                do
+                                var tableIndex = index;
+                                if (x > 0)
                                 {
-                                    var tableIndex = index;
-                                    if (x > 0)
-                                    {
-                                        lenBytesRead += lz_read_int(out tableIndex, compressedData, baseIdx + lenBytesRead, subByteAlignment, huffEntryByteCountRoundedUp);
-                                    }
-                                    lenBytesRead += lz_read_int(out table[tableIndex]._0, compressedSpan, baseIdx + lenBytesRead, subByteAlignment, 0x20);
-                                    index++;
+                                    lenBytesRead += lz_read_int(out tableIndex, compressedData, baseIdx + lenBytesRead, subByteAlignment, huffEntryByteCountRoundedUp);
                                 }
-                                while (index < numEntriesToFill);
+                                lenBytesRead += lz_read_int(out table[tableIndex]._0, compressedSpan, baseIdx + lenBytesRead, subByteAlignment, 0x20);
                             }
+
                             baseIdx += lenBytesRead;
 
 

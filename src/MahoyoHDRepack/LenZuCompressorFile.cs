@@ -27,13 +27,13 @@ namespace MahoyoHDRepack
 
         private struct LzHeaderData
         {
-            public uint _31; // [3..15]
-            public uint _32; // [3..15]
-            public uint Max_32_33; // max of _32 and byte at 0x33 in file
-            public uint _34_BitShift; // [0..above field] + some other constraints
-            public uint _35_DictEntryOffset; // [2..8]
+            public int _31; // [3..15]
+            public int _32; // [3..15]
+            public int Max_32_33; // max of _32 and byte at 0x33 in file
+            public int _34_BitShift; // [0..above field] + some other constraints
+            public int _35_DictEntryOffset; // [2..8]
             public int Max_31_32_HuffTableBitCount; // max of _31 and _32
-            public uint _30;
+            public int _30;
         }
 
         public static unsafe Result ReadCompressed(ref UniqueRef<IStorage> uncompressed, IStorage compressedStorage)
@@ -151,21 +151,21 @@ namespace MahoyoHDRepack
                         for (var i = 0; i < tableEntryCount; i++)
                         {
                             table[i].TableConstructOrderVal = 0;
-                            table[i].Child2 = uint.MaxValue;
-                            table[i].Child1 = uint.MaxValue;
-                            table[i].BitValue = 0xff;
+                            table[i].Child2 = -1;
+                            table[i].Child1 = -1;
+                            table[i].BitValue = -1;
                         }
 
                         if (tableEntryCount != 0)
                         {
                             // now we want to read the initial table
-                            var firstRealTableEntry = (uint)GetMaskFromBitCount(lz_data.Max_31_32_HuffTableBitCount) + 1;
+                            var firstRealTableEntry = GetMaskFromBitCount(lz_data.Max_31_32_HuffTableBitCount) + 1;
                             var huffEntryByteCountRoundedUp = (lz_data.Max_31_32_HuffTableBitCount + 7) / 8;
 
                             lenBytesRead = lz_read_int(out var numEntriesToFill, compressedData, baseIdx, subByteAlignment, huffEntryByteCountRoundedUp);
                             if (numEntriesToFill == 0)
                             {
-                                numEntriesToFill = firstRealTableEntry;
+                                numEntriesToFill = (uint)firstRealTableEntry;
                             }
 
                             // read some table entries
@@ -173,7 +173,7 @@ namespace MahoyoHDRepack
                             if (firstRealTableEntry * 4 < (huffEntryByteCountRoundedUp + 4) * numEntriesToFill)
                             {
                                 x = -1;
-                                numEntriesToFill = firstRealTableEntry;
+                                numEntriesToFill = (uint)firstRealTableEntry;
                             }
 
                             for (var index = 0u; index < numEntriesToFill; index++)
@@ -233,8 +233,8 @@ namespace MahoyoHDRepack
                                 if (counter < 2) break;
 
                                 table[currentEntry].TableConstructOrderVal = table[idxOfSndSmallest].TableConstructOrderVal + table[idxOfSmallest].TableConstructOrderVal;
-                                table[currentEntry].Child2 = idxOfSmallest;
-                                table[currentEntry].Child1 = idxOfSndSmallest;
+                                table[currentEntry].Child2 = (int)idxOfSmallest;
+                                table[currentEntry].Child1 = (int)idxOfSndSmallest;
                                 table[idxOfSmallest].BitValue = 1;
                                 table[idxOfSndSmallest].BitValue = 0;
 
@@ -417,7 +417,8 @@ namespace MahoyoHDRepack
 
             private static bool lz_adjust_data(LzHeaderData* data)
             {
-                uint _31, _32, _33, _34, _max_32_33;
+                int _31, _32, _33;
+                int _34, _max_32_33;
 
                 _31 = data->_31;
                 var _31gt2 = 2 < (int)_31;
@@ -577,13 +578,19 @@ namespace MahoyoHDRepack
                 return 0x20;
             }
 
-            private static uint DecompressData(LzHeaderData* headerData, NativeSpan* decompressedData, NativeSpan* compressedData, int baseIdx, int prevBitPos, uint fileLen, HuffmanTableEntry* huffmanTable, uint startEntry)
+            private static void TestDivRem(int val, out int res, out int rem)
             {
-                uint resultDictEntry, _34_bitShift, uVar4, sgn7, u_zero;
+                res = rem = val % 8;
+            }
+
+            private static uint DecompressData(LzHeaderData* headerData, NativeSpan* decompressedData, NativeSpan* compressedData, int baseIdx, int prevBitPos, uint fileLen, HuffmanTableEntry* huffmanTable, int startEntry)
+            {
+                uint sgn7, u_zero;
                 ulong uVar5;
-                int iVar5, iVar6, bitOffs, cidx, nextBitOffs, nextIndex;
-                byte readMaskedByte, bVar8, curByte, maskedByte;
+                int iVar5, iVar6, bitOffs, cidx, nextIndex, _34_bitShift;
+                byte readMaskedByte, bVar8, maskedByte;
                 byte* pCompressed, pDecompressed;
+                int resultDictEntry;
 
                 pDecompressed = decompressedData->Data;
                 pCompressed = compressedData->Data + baseIdx;
@@ -595,6 +602,7 @@ namespace MahoyoHDRepack
 
                 while (true)
                 {
+                    int nextBitOffs;
                     while (true)
                     {
                         if ((fileLen <= u_zero) || (compressedData->Length <= cidx + baseIdx))
@@ -602,7 +610,7 @@ namespace MahoyoHDRepack
                             compressedData->Length = (int)u_zero;
                             return u_zero;
                         }
-                        curByte = pCompressed[cidx];
+                        var curByte = pCompressed[cidx];
                         var tableBitCount = headerData->Max_31_32_HuffTableBitCount;
                         nextBitOffs = prevBitPos - 1;
                         if (nextBitOffs < 0) nextBitOffs = 7;
@@ -621,14 +629,8 @@ namespace MahoyoHDRepack
                         // ReadFromDictSequenceFailed
                         if ((int)resultDictEntry < 0) return (uint)-nextIndex;
 
-                        // load the sign bit of _7 into the low 3 bits of sgn7
-                        sgn7 = (uint)((dictBitLength >> 0x1f) & 7);
-                        // effectively: sgn7 = _7 < 0 ? 7 : 0;
-                        // sgn6 = ..0sss (s = sign bit, S = inverse sign bit
-
-                        var tmp1 = (int)(dictBitLength + sgn7);
-                        var offsAmt = tmp1 >> 3;
-                        nextBitOffs -= (int)((tmp1 & 7) - sgn7);
+                        var offsAmt = dictBitLength / 8;
+                        nextBitOffs -= dictBitLength % 8;
 
                         if (7 < nextBitOffs)
                         {
@@ -703,13 +705,8 @@ namespace MahoyoHDRepack
                             {
                                 nextBitOffs = -1;
                             }
-                            _34_bitShift &= 0x80000007;
-                            if ((int)_34_bitShift < 0)
-                            {
-                                _34_bitShift = (_34_bitShift - 1 | 0xfffffff8) + 1;
-                            }
-                            _34_bitShift = (uint)(prevBitPos - _34_bitShift);
-                            uVar4 = _34_bitShift - 8;
+                            _34_bitShift = (prevBitPos - (_34_bitShift % 8));
+                            var uVar4 = _34_bitShift - 8;
                             if ((int)_34_bitShift < 8)
                             {
                                 uVar4 = _34_bitShift;
@@ -725,7 +722,7 @@ namespace MahoyoHDRepack
                         if (0 < (int)resultDictEntry)
                         {
                             _34_bitShift = headerData->_35_DictEntryOffset;
-                            uVar5 = resultDictEntry;
+                            var iterVal = resultDictEntry;
                             do
                             {
                                 if ((int)u_zero < fileLen)
@@ -734,13 +731,13 @@ namespace MahoyoHDRepack
                                     pDecompressed += 1;
                                     u_zero += 1;
                                 }
-                                uVar5 -= 1;
+                                iterVal -= 1;
                             }
-                            while (uVar5 != 0);
+                            while (iterVal != 0);
                         }
                     }
                     if ((int)resultDictEntry < 0) break;
-                    _34_bitShift = (uint)(dictBitLength >> 0x1f & 7);
+                    _34_bitShift = dictBitLength >> 0x1f & 7;
                     var dictBitLengthPlusBitShift = dictBitLength + _34_bitShift;
                     cidx = (int)dictBitLengthPlusBitShift >> 3;
                     prevBitPos = nextBitOffs - (int)((dictBitLengthPlusBitShift & 7) - _34_bitShift);
@@ -757,7 +754,7 @@ namespace MahoyoHDRepack
                     cidx = nextIndex + cidx;
                     if (0 < (int)(resultDictEntry + 1))
                     {
-                        uVar5 = resultDictEntry + 1;
+                        var iterVar = resultDictEntry + 1;
                         do
                         {
                             if ((int)u_zero < fileLen)
@@ -768,9 +765,9 @@ namespace MahoyoHDRepack
                                 pDecompressed = pDecompressed + 1;
                                 u_zero += 1;
                             }
-                            uVar5 -= 1;
+                            iterVar -= 1;
                         }
-                        while (uVar5 != 0);
+                        while (iterVar != 0);
                     }
                 }
                 return (uint)-nextIndex;
@@ -780,9 +777,9 @@ namespace MahoyoHDRepack
             public struct HuffmanTableEntry
             {
                 [FieldOffset(0x0)] public uint TableConstructOrderVal;
-                [FieldOffset(0x4)] public uint Child2;
-                [FieldOffset(0x8)] public uint Child1;
-                [FieldOffset(0xc)] public byte BitValue;
+                [FieldOffset(0x4)] public int Child2;
+                [FieldOffset(0x8)] public int Child1;
+                [FieldOffset(0xc)] public sbyte BitValue;
             }
 
             private static int GetMaskFromBitCount(int bitCount)
@@ -824,11 +821,11 @@ namespace MahoyoHDRepack
 
             // this appears to be a huffman decoder?
             // returns the dictionary entry index after the read
-            private static uint LenZu_DecodeHuffmanSequence(byte* pCompressed, int startIndex, int readShift, int numBits, HuffmanTableEntry* table, uint startEntry, int* bitSequenceLength)
+            private static int LenZu_DecodeHuffmanSequence(byte* pCompressed, int startIndex, int readShift, int numBits, HuffmanTableEntry* table, int startEntry, int* bitSequenceLength)
             {
                 uint firstRealHuffEntry, bitsRead, resultVal, persistResultVar;
                 long lVar3, readIndex;
-                ulong tableEntry, nextDictEntry;
+                int tableEntry, nextDictEntry;
                 int mask;
                 byte readValue;
 
@@ -849,7 +846,7 @@ namespace MahoyoHDRepack
                             if ((uint)tableEntry < firstRealHuffEntry)
                             {
                                 *bitSequenceLength = (int)bitsRead;
-                                return (uint)tableEntry;
+                                return tableEntry;
                             }
                             readValue = (byte)(pCompressed[readIndex] >> ((byte)readShift & 0x1f) & 1);
                             nextDictEntry = table[tableEntry].Child1;
@@ -874,9 +871,9 @@ namespace MahoyoHDRepack
                             tableEntry = nextDictEntry;
                         }
                         *bitSequenceLength = (int)bitsRead;
-                        return uint.MaxValue;
+                        return -1;
                     }
-                    return uint.MaxValue;
+                    return -1;
                 }
                 if (startEntry != 0)
                 {
@@ -895,7 +892,7 @@ namespace MahoyoHDRepack
                     }
                     while (iterVar < startEntry);
                 }
-                return resultVal;
+                return (int)resultVal;
             }
         }
 

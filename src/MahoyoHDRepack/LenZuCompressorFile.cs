@@ -30,8 +30,8 @@ namespace MahoyoHDRepack
             public int _31; // [3..15]
             public int _32; // [3..15]
             public int Max_32_33; // max of _32 and byte at 0x33 in file
-            public int LookbehindLowBitCount; // [0..above field] + some other constraints
-            public int LookbehindBaseDistance; // [2..8]
+            public int BackrefLowBitCount; // [0..above field] + some other constraints
+            public int BackrefBaseDistance; // [2..8]
             public int Max_31_32_HuffTableBitCount; // max of _31 and _32
             public uint _30;
         }
@@ -415,8 +415,8 @@ namespace MahoyoHDRepack
                 lz_data->_31 = pData[1];
                 lz_data->_32 = pData[2];
                 lz_data->Max_32_33 = pData[3];
-                lz_data->LookbehindLowBitCount = pData[4];
-                lz_data->LookbehindBaseDistance = pData[5];
+                lz_data->BackrefLowBitCount = pData[4];
+                lz_data->BackrefBaseDistance = pData[5];
 
                 *reusltSubByteAlignment = subByteAlignmentUnused;
 
@@ -475,31 +475,31 @@ namespace MahoyoHDRepack
                     data->Max_32_33 = _max_32_33 = 0xf;
                 }
 
-                var _34 = data->LookbehindLowBitCount;
+                var _34 = data->BackrefLowBitCount;
                 var _34gtm1 = -1 < _32;
                 if (!_34gtm1)
                 {
-                    data->LookbehindLowBitCount = _34 = 0;
+                    data->BackrefLowBitCount = _34 = 0;
                 }
                 var _34lt_max = _34 < _max_32_33;
                 if (!_34lt_max)
                 {
-                    data->LookbehindLowBitCount = _34 = _max_32_33 - 1;
+                    data->BackrefLowBitCount = _34 = _max_32_33 - 1;
                 }
                 var _mdiffltemax = _max_32_33 - _34 <= _31;
                 if (!_mdiffltemax)
                 {
-                    data->LookbehindLowBitCount = _max_32_33 - _31;
+                    data->BackrefLowBitCount = _max_32_33 - _31;
                 }
 
-                if (data->LookbehindBaseDistance < 2)
+                if (data->BackrefBaseDistance < 2)
                 {
-                    data->LookbehindBaseDistance = 2;
+                    data->BackrefBaseDistance = 2;
                     return false;
                 }
-                if (8 < data->LookbehindBaseDistance)
+                if (8 < data->BackrefBaseDistance)
                 {
-                    data->LookbehindBaseDistance = 8;
+                    data->BackrefBaseDistance = 8;
                     return false;
                 }
                 return _mdiffltemax &&
@@ -601,7 +601,7 @@ namespace MahoyoHDRepack
             /// </summary>
             /// <remarks>
             /// <para>
-            /// The compressed data consists of a sequence of 'instructions', where each 'instruction' encodes BOTH a lookbehind AND a literal. All instructions
+            /// The compressed data consists of a sequence of 'instructions', where each 'instruction' encodes BOTH a backreference AND a literal. All instructions
             /// are compactly encoded, using as few bits as possible in the bitstream.
             /// </para>
             /// <para>
@@ -610,16 +610,16 @@ namespace MahoyoHDRepack
             /// big-endian order, so the first bit in each byte is bit 7 (the high bit), and the last is bit 0 (the low bit).)
             /// </para>
             /// <para>
-            /// The first bit in each instruction indicates whether or nor this instruction includes a lookbehind. If the bit is 1, it does, and if the bit is 0, it
+            /// The first bit in each instruction indicates whether or nor this instruction includes a backreference. If the bit is 1, it does, and if the bit is 0, it
             /// doesn't. The following bits are a Huffman-coded sequence representing the a value we'll call X. X serves two purposes: it is the number of bytes
             /// to copy from earlier in the output stream, AND the 1-based number of literal bytes in the compressed stream. (This scheme actually confuses me somewhat,
-            /// because it seems to mean that it's giving up a great deal of possible encoding density by REQUIRING that every lookbehind be followed by a literal.)
+            /// because it seems to mean that it's giving up a great deal of possible encoding density by REQUIRING that every backreference be followed by a literal.)
             /// </para>
             /// <para>
-            /// If this instruction encodes a lookbehind, X is incremented by the header value <see cref="LzHeaderData.LookbehindBaseDistance"/> (which is the 6th byte after
+            /// If this instruction encodes a backreference, X is incremented by the header value <see cref="LzHeaderData.BackrefBaseDistance"/> (which is the 6th byte after
             /// the main header). The next bits are another Huffman sequence (from the same code!) which encode the high bits of the backreference distance offset. The next
-            /// <see cref="LzHeaderData.LookbehindLowBitCount"/> bits are a normally-encoded big-endian integer (no more than 16 bits!) which are the low bits of the backref
-            /// distance offset. These values are concatenated, then added to <see cref="LzHeaderData.LookbehindBaseDistance"/> to compute the actual distance. Each byte is
+            /// <see cref="LzHeaderData.BackrefLowBitCount"/> bits are a normally-encoded big-endian integer (no more than 16 bits!) which are the low bits of the backref
+            /// distance offset. These values are concatenated, then added to <see cref="LzHeaderData.BackrefBaseDistance"/> to compute the actual distance. Each byte is
             /// copied one-by-one, so the new data can overlap the backreferenced data (as is common in LZ77 algorithms) Then, the next X + 1 octets (8 bit bytes, at whatever
             /// alignment in the bitstream the encoder happens to be in at this point) are copied verbatim to the output, as a literal. The instruction is now completed.
             /// </para>
@@ -651,7 +651,7 @@ namespace MahoyoHDRepack
                 while (true)
                 {
                     int nextBitOffs;
-                    int lookbehindCount;
+                    int backrefCount;
                     while (true)
                     {
                         if ((fileLen <= currentFileOffset) || (compressedData->Length <= cidx + baseIdx))
@@ -667,7 +667,7 @@ namespace MahoyoHDRepack
                         // we only increment cidx when we wrapped into the next byte
                         nextIndex = prevBitPos - 1 >= 0 ? cidx : cidx + 1;
 
-                        lookbehindCount = LenZu_DecodeHuffmanSequence(pCompressed, nextIndex, nextBitOffs, tableBitCount, huffmanTable, startEntry, &dictBitLength);
+                        backrefCount = LenZu_DecodeHuffmanSequence(pCompressed, nextIndex, nextBitOffs, tableBitCount, huffmanTable, startEntry, &dictBitLength);
 
                         if (((curByte >> ((byte)prevBitPos)) & 1) == 0)
                         {
@@ -676,7 +676,7 @@ namespace MahoyoHDRepack
                         }
 
                         // ReadFromDictSequenceFailed
-                        if (lookbehindCount < 0) return -nextIndex;
+                        if (backrefCount < 0) return -nextIndex;
 
                         var offsAmt = dictBitLength / 8;
                         nextBitOffs -= dictBitLength % 8;
@@ -693,11 +693,11 @@ namespace MahoyoHDRepack
                         }
 
                         nextIndex += offsAmt;
-                        lookbehindCount += headerData->LookbehindBaseDistance;
+                        backrefCount += headerData->BackrefBaseDistance;
 
-                        var lookbehindHighBits = LenZu_DecodeHuffmanSequence(pCompressed, nextIndex, nextBitOffs, tableBitCount, huffmanTable, startEntry, &dictBitLength);
+                        var backrefDistHighBits = LenZu_DecodeHuffmanSequence(pCompressed, nextIndex, nextBitOffs, tableBitCount, huffmanTable, startEntry, &dictBitLength);
                         // ReadFromDictSequence failed
-                        if (lookbehindHighBits < 0) return -nextIndex;
+                        if (backrefDistHighBits < 0) return -nextIndex;
 
                         var offsAmt2 = dictBitLength / 8;
                         prevBitPos = nextBitOffs - (dictBitLength % 8);
@@ -714,42 +714,42 @@ namespace MahoyoHDRepack
                         }
 
                         cidx = nextIndex + offsAmt2;
-                        uint lookbehindLowBits = 0;
+                        uint backrefDistLowBits = 0;
 
-                        var lookbehindBitCount = headerData->LookbehindLowBitCount;
+                        var backrefBitCount = headerData->BackrefLowBitCount;
                         // interestingly, even though the implementation of ReadUnalignedBitsStartingAtIndex (mostly) supports up to 16-bit reads,
                         // the implementation does reads first in a block of 8, then in the remainder. 
-                        if (8 < lookbehindBitCount)
+                        if (8 < backrefBitCount)
                         {
                             (var readMaskedByte, var nextAdjustB) = ReadUnalignedBitsStartingAtIndex(&pCompressed[cidx], prevBitPos);
                             nextBitOffs = nextAdjustB;
 
-                            lookbehindBitCount -= 8;
+                            backrefBitCount -= 8;
                             cidx += nextBitOffs;
-                            lookbehindLowBits = (uint)readMaskedByte << lookbehindBitCount;
+                            backrefDistLowBits = (uint)readMaskedByte << backrefBitCount;
                         }
-                        if (0 < lookbehindBitCount)
+                        if (0 < backrefBitCount)
                         {
-                            (var readMaskedByte, var nextBitOffsB) = ReadUnalignedBitsStartingAtIndex(&pCompressed[cidx], prevBitPos, lookbehindBitCount);
+                            (var readMaskedByte, var nextBitOffsB) = ReadUnalignedBitsStartingAtIndex(&pCompressed[cidx], prevBitPos, backrefBitCount);
                             nextBitOffs = nextBitOffsB;
 
-                            lookbehindBitCount = prevBitPos - (lookbehindBitCount % 8);
+                            backrefBitCount = prevBitPos - (backrefBitCount % 8);
 
-                            prevBitPos = WrapAt8(lookbehindBitCount);
+                            prevBitPos = WrapAt8(backrefBitCount);
 
                             cidx += nextBitOffs;
-                            lookbehindLowBits |= readMaskedByte;
+                            backrefDistLowBits |= readMaskedByte;
                         }
 
                         // decode a lookbehind
-                        if (0 < lookbehindCount)
+                        if (0 < backrefCount)
                         {
-                            var iterVar = lookbehindCount;
+                            var iterVar = backrefCount;
                             do
                             {
                                 if (currentFileOffset < fileLen)
                                 {
-                                    *pDecompressed = pDecompressed[-(long)(int)(lookbehindLowBits + (lookbehindHighBits << headerData->LookbehindLowBitCount) + headerData->LookbehindBaseDistance)];
+                                    *pDecompressed = pDecompressed[-(long)(int)(backrefDistLowBits + (backrefDistHighBits << headerData->BackrefLowBitCount) + headerData->BackrefBaseDistance)];
                                     pDecompressed += 1;
                                     currentFileOffset += 1;
                                 }
@@ -758,7 +758,7 @@ namespace MahoyoHDRepack
                             while (iterVar != 0);
                         }
                     }
-                    if (lookbehindCount < 0) break;
+                    if (backrefCount < 0) break;
 
                     cidx = dictBitLength / 8;
                     prevBitPos = nextBitOffs - (dictBitLength % 8);
@@ -775,9 +775,9 @@ namespace MahoyoHDRepack
                     cidx = nextIndex + cidx;
 
                     // decode a possibly-unaligned literal
-                    if (0 < lookbehindCount + 1)
+                    if (0 < backrefCount + 1)
                     {
-                        var iterVar = lookbehindCount + 1;
+                        var iterVar = backrefCount + 1;
                         do
                         {
                             if (currentFileOffset < fileLen)

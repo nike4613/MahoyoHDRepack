@@ -291,13 +291,13 @@ namespace MahoyoHDRepack
 
             private static ulong CONCAT44(uint hi, uint lo) => ((ulong)hi << 32) | lo;
 
-            public readonly struct ReadByteFromBitOffsetResult(byte result, sbyte adjust)
+            public readonly struct ReadByteFromBitOffsetResult(ushort result, short adjust)
             {
-                public readonly byte Result = result;
-                public readonly sbyte Adjust = adjust;
+                public readonly ushort Result = result;
+                public readonly short Adjust = adjust;
 
                 [MethodImpl(MethodImplOptions.AggressiveInlining)]
-                public void Deconstruct(out byte result, out sbyte adjust)
+                public void Deconstruct(out ushort result, out short adjust)
                 {
                     result = Result;
                     adjust = Adjust;
@@ -305,15 +305,15 @@ namespace MahoyoHDRepack
             }
 
             /// <summary>
-            /// Reads an unaligned (big-endian) byte from the byte-aligned bitstream <paramref name="data"/>, with the bit with index <paramref name="bitIndex"/>
+            /// Reads an unaligned (big-endian) set of bits from the byte-aligned bitstream <paramref name="data"/>, with the bit with index <paramref name="bitIndex"/>
             /// being the highest bit in the result.
             /// </summary>
             /// <remarks>
-            /// <para>Note: this is NOT safe in the face of byte 2 at <paramref name="data"/> being an invalid page. This implementation is compied basically
+            /// <para>Note: this is NOT safe in the face <c><paramref name="data"/> + 1</c> being an invalid page. This implementation is compied basically
             /// verbatim from the decomp.</para>
             /// <para>
             /// 
-            /// Consider the following example bytes (where each letter represents a single bit in the bitstream):
+            /// Consider the following example bytes (where each letter represents a single bit in the bitstream) (all examples assume <c><paramref name="bitCount"/> = 8</c>):
             /// 
             /// <code>
             /// 7......0 7......0
@@ -342,22 +342,40 @@ namespace MahoyoHDRepack
             /// Output: hijklmno
             /// </code>
             /// 
-            /// Note how no matter what, the next byte at that alignment starts in the following aligned byte, hence the pointer-adjust always being 1.
+            /// Note how no matter what, the next byte at that alignment starts in the following aligned byte, hence the pointer-adjust always being 1, at least when <paramref name="bitCount"/> is 8.
             /// 
             /// </para>
             /// <para>I find the choice of 7 to mean byte-aligned to be odd, but this is what the original code does. ¯\_(ツ)_/¯</para>
+            /// <para>
+            /// The original implementation does not seem to be correct in the face of <c><paramref name="bitCount"/> = 16</c> and <c><paramref name="bitIndex"/> = 7</c>, or any other combination which
+            /// causes this to consume all of the bits in the second byte read. In this case, the byte-advance will be 1, which is incorrect; it should be 2. The original code does not correctly
+            /// handle this case.
+            /// </para>
             /// </remarks>
             /// <param name="data">A pointer to the data to read from.</param>
             /// <param name="bitIndex">The bit index to read at.</param>
-            /// <returns>A <see cref="ReadByteFromBitOffsetResult"/> containing both the result and the pointer-adjust. (The pointer-adjust is always 1 though.)</returns>
-            private static ReadByteFromBitOffsetResult ReadUnalignedByteByFirstBitIndex(byte* data, int bitIndex)
+            /// <param name="bitCount">The number of bits to read.</param>
+            /// <returns>A <see cref="ReadByteFromBitOffsetResult"/> containing both the result and the pointer-adjust.</returns>
+            private static ReadByteFromBitOffsetResult ReadUnalignedBitsStartingAtIndex(byte* data, int bitIndex, int bitCount = 8)
             {
                 Helpers.Assert(bitIndex is >= 0 and < 8);
+                Helpers.Assert(bitCount is >= 0 and <= 16);
+                Helpers.Assert(7 - bitIndex + bitCount <= 16);
 
-                // NOTE: if this needs to be revisited, look at lz_read_int in decomp for its purest form
-                var maskedFirst = (0xff >> (7 - bitIndex)) & *data;
-                var result = (data[1] >> (bitIndex + 1)) | (maskedFirst << (7 - bitIndex));
-                return new((byte)result, 1);
+                var maskedFirst = (byte)((byte)(0xff >> (7 - bitIndex)) & *data);
+
+                var bitOffs = bitIndex - bitCount + 1;
+
+                if (bitOffs < 1)
+                {
+                    var result = (data[1] >> (bitOffs + 8)) | (maskedFirst << (-bitOffs));
+                    return new((ushort)result, (short)(bitOffs == -8 ? 2 : 1));
+                }
+                else
+                {
+                    var result = maskedFirst >> bitOffs;
+                    return new((ushort)result, 0);
+                }
             }
 
             private static int lz_read_int(out uint result, NativeSpan* dataSpan, int baseIdx, int subByteAlignment, int bitsToRead)
@@ -366,7 +384,6 @@ namespace MahoyoHDRepack
                 var idx = 0;
                 var reads = 0;
                 result = 0;
-                byte resultVal = 0;
                 var bytesToRead = ((bitsToRead - 1) / 8) + 1;
                 if (0 < bytesToRead)
                 {
@@ -375,7 +392,7 @@ namespace MahoyoHDRepack
                     do
                     {
                         if (len <= idx + baseIdx) break;
-                        (resultVal, var moveAmt) = ReadUnalignedByteByFirstBitIndex(pCur, subByteAlignment);
+                        (var resultVal, var moveAmt) = ReadUnalignedBitsStartingAtIndex(pCur, subByteAlignment);
                         idx += moveAmt;
                         result |= (uint)resultVal << baseBitNo;
                         reads += 1;
@@ -582,12 +599,11 @@ namespace MahoyoHDRepack
                 uint resultDictEntry, _34_bitShift, uVar4, sgn7, u_zero;
                 ulong uVar5;
                 int iVar5, iVar6, bitOffs, cidx, nextIndex;
-                byte readMaskedByte, bVar8, curByte, maskedByte;
+                byte bVar8, curByte, maskedByte;
                 byte* pCompressed, pDecompressed;
 
                 pDecompressed = decompressedData->Data;
                 pCompressed = compressedData->Data + baseIdx;
-                readMaskedByte = 0;
                 cidx = 0;
                 u_zero = 0;
                 var dictBitLength = 0;
@@ -622,14 +638,8 @@ namespace MahoyoHDRepack
                         // ReadFromDictSequenceFailed
                         if ((int)resultDictEntry < 0) return (uint)-nextIndex;
 
-                        // load the sign bit of _7 into the low 3 bits of sgn7
-                        sgn7 = (uint)((dictBitLength >> 0x1f) & 7);
-                        // effectively: sgn7 = _7 < 0 ? 7 : 0;
-                        // sgn6 = ..0sss (s = sign bit, S = inverse sign bit
-
-                        var tmp1 = (int)(dictBitLength + sgn7);
-                        var offsAmt = tmp1 >> 3;
-                        nextBitOffs -= (int)((tmp1 & 7) - sgn7);
+                        var offsAmt = dictBitLength / 8;
+                        nextBitOffs -= dictBitLength % 8;
 
                         if (7 < nextBitOffs)
                         {
@@ -649,10 +659,8 @@ namespace MahoyoHDRepack
                         // ReadFromDictSequence failed
                         if ((int)sndDictResul < 0) return (uint)-nextIndex;
 
-                        sgn7 = (uint)(dictBitLength >> 0x1f) & 7;
-                        var tmp2 = (int)(dictBitLength + sgn7);
-                        var offsAmt2 = tmp2 >> 3;
-                        prevBitPos = (int)(nextBitOffs - ((tmp2 & 7) - sgn7));
+                        var offsAmt2 = dictBitLength / 8;
+                        prevBitPos = nextBitOffs - (dictBitLength % 8);
                         if (7 < prevBitPos)
                         {
                             prevBitPos -= 8;
@@ -671,8 +679,8 @@ namespace MahoyoHDRepack
                         curByte = (byte)_34_bitShift;
                         if (8 < (int)_34_bitShift)
                         {
-                            (readMaskedByte, var nextBitOffsB) = ReadUnalignedByteByFirstBitIndex(&pCompressed[cidx], prevBitPos);
-                            nextBitOffs = nextBitOffsB;
+                            (var readMaskedByte, var nextAdjustB) = ReadUnalignedBitsStartingAtIndex(&pCompressed[cidx], prevBitPos);
+                            nextBitOffs = nextAdjustB;
 
                             _34_bitShift -= 8;
                             cidx += nextBitOffs;
@@ -680,36 +688,10 @@ namespace MahoyoHDRepack
                         }
                         if (0 < (int)_34_bitShift)
                         {
-                            // note: this looks VERY SIMILAR to ReadUnalignedByteByFirstBitIndex, except that it has the extra _34_bitShift terms inserted
-                            // this is likely actually another case of that logic being inlined (maybe manually, hopefully by the compiler), and all the others
-                            // just don't use that bitshift as a meaningful parameter (they always set it to 0, maybe?)
-                            maskedByte = (byte)((byte)(0xff >> (7 - prevBitPos)) & pCompressed[cidx]);
-                            if ((prevBitPos < 8) && (_34_bitShift - 1 < 8))
-                            {
-                                nextBitOffs = 0;
-                                bitOffs = (int)((prevBitPos - _34_bitShift) + 1);
-                                readMaskedByte = (byte)bitOffs;
-                                if (bitOffs < 1)
-                                {
-                                    nextBitOffs = 1;
-                                    readMaskedByte = (byte)(pCompressed[(long)cidx + 1] >> ((sbyte)(prevBitPos - _34_bitShift) + 9 & 0x1f)
-                                        | maskedByte << (-(sbyte)readMaskedByte & 0x1f));
-                                }
-                                else
-                                {
-                                    readMaskedByte = (byte)(maskedByte >> (readMaskedByte & 0x1f));
-                                }
-                            }
-                            else
-                            {
-                                nextBitOffs = -1;
-                            }
-                            _34_bitShift &= 0x80000007;
-                            if ((int)_34_bitShift < 0)
-                            {
-                                _34_bitShift = (_34_bitShift - 1 | 0xfffffff8) + 1;
-                            }
-                            _34_bitShift = (uint)(prevBitPos - _34_bitShift);
+                            (var readMaskedByte, var nextBitOffsB) = ReadUnalignedBitsStartingAtIndex(&pCompressed[cidx], prevBitPos, (int)_34_bitShift);
+                            nextBitOffs = nextBitOffsB;
+
+                            _34_bitShift = (uint)(prevBitPos - (_34_bitShift % 8));
                             uVar4 = _34_bitShift - 8;
                             if ((int)_34_bitShift < 8)
                             {
@@ -763,9 +745,9 @@ namespace MahoyoHDRepack
                         {
                             if ((int)u_zero < fileLen)
                             {
-                                (readMaskedByte, var nextBitOffsB) = ReadUnalignedByteByFirstBitIndex(&pCompressed[cidx], prevBitPos);
+                                (var readMaskedByte, var nextBitOffsB) = ReadUnalignedBitsStartingAtIndex(&pCompressed[cidx], prevBitPos);
                                 cidx += nextBitOffsB;
-                                *pDecompressed = readMaskedByte;
+                                *pDecompressed = (byte)readMaskedByte;
                                 pDecompressed = pDecompressed + 1;
                                 u_zero += 1;
                             }
@@ -776,6 +758,7 @@ namespace MahoyoHDRepack
                 }
                 return (uint)-nextIndex;
             }
+
 
             [StructLayout(LayoutKind.Explicit)]
             public struct HuffmanTableEntry

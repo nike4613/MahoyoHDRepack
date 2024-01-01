@@ -27,11 +27,11 @@ namespace MahoyoHDRepack
 
         private struct LzHeaderData
         {
-            public uint _31; // [3..15]
-            public uint _32; // [3..15]
-            public uint Max_32_33; // max of _32 and byte at 0x33 in file
-            public uint _34_BitShift; // [0..above field] + some other constraints
-            public uint _35_DictEntryOffset; // [2..8]
+            public int _31; // [3..15]
+            public int _32; // [3..15]
+            public int Max_32_33; // max of _32 and byte at 0x33 in file
+            public int LookbehindBaseBitCount; // [0..above field] + some other constraints
+            public int _35_DictEntryOffset; // [2..8]
             public int Max_31_32_HuffTableBitCount; // max of _31 and _32
             public uint _30;
         }
@@ -417,7 +417,7 @@ namespace MahoyoHDRepack
                 lz_data->_31 = pData[1];
                 lz_data->_32 = pData[2];
                 lz_data->Max_32_33 = pData[3];
-                lz_data->_34_BitShift = pData[4];
+                lz_data->LookbehindBaseBitCount = pData[4];
                 lz_data->_35_DictEntryOffset = pData[5];
 
                 *reusltSubByteAlignment = subByteAlignmentUnused;
@@ -434,74 +434,72 @@ namespace MahoyoHDRepack
 
             private static bool lz_adjust_data(LzHeaderData* data)
             {
-                uint _31, _32, _33, _34, _max_32_33;
-
-                _31 = data->_31;
-                var _31gt2 = 2 < (int)_31;
+                var _31 = data->_31;
+                var _31gt2 = 2 < _31;
                 if (!_31gt2)
                 {
                     data->_31 = _31 = 3;
                 }
-                var _31lt16 = (int)_31 < 0x10;
+                var _31lt16 = _31 < 0x10;
                 if (!_31lt16)
                 {
                     data->_31 = _31 = 0xf;
                 }
 
-                _32 = data->_32;
-                var _32gt2 = 2 < (int)_32;
+                var _32 = data->_32;
+                var _32gt2 = 2 < _32;
                 if (!_32gt2)
                 {
                     data->_32 = _32 = 3;
                 }
-                var _32lt16 = (int)_32 < 0x10;
+                var _32lt16 = _32 < 0x10;
                 if (!_32lt16)
                 {
                     data->_32 = _32 = 0xf;
                 }
 
-                data->Max_31_32_HuffTableBitCount = (int)_31;
-                if ((int)_31 < (int)_32)
+                data->Max_31_32_HuffTableBitCount = _31;
+                if (_31 < _32)
                 {
-                    data->Max_31_32_HuffTableBitCount = (int)(_31 = _32);
+                    data->Max_31_32_HuffTableBitCount = _31 = _32;
                 }
 
-                _33 = data->Max_32_33;
-                _max_32_33 = _33;
-                if ((int)_32 > (int)_33)
+                var _33 = data->Max_32_33;
+                var _max_32_33 = _33;
+                if (_32 > _33)
                 {
                     data->Max_32_33 = _max_32_33 = _32;
                 }
 
-                var _max_32_33lt16 = (int)_max_32_33 < 0x10;
+                var _max_32_33lt16 = _max_32_33 < 0x10;
                 if (!_max_32_33lt16)
                 {
                     data->Max_32_33 = _max_32_33 = 0xf;
                 }
 
-                _34 = data->_34_BitShift;
-                var _34gtm1 = -1 < (int)_32;
+                var _34 = data->LookbehindBaseBitCount;
+                var _34gtm1 = -1 < _32;
                 if (!_34gtm1)
                 {
-                    data->_34_BitShift = _34 = 0;
+                    data->LookbehindBaseBitCount = _34 = 0;
                 }
-                var _34lt_max = (int)_34 < (int)_max_32_33;
+                var _34lt_max = _34 < _max_32_33;
                 if (!_34lt_max)
                 {
-                    data->_34_BitShift = _34 = _max_32_33 - 1;
+                    data->LookbehindBaseBitCount = _34 = _max_32_33 - 1;
                 }
-                var _mdiffltemax = (int)(_max_32_33 - _34) <= (int)_31;
+                var _mdiffltemax = _max_32_33 - _34 <= _31;
                 if (!_mdiffltemax)
                 {
-                    data->_34_BitShift = _max_32_33 - _31;
+                    data->LookbehindBaseBitCount = _max_32_33 - _31;
                 }
 
-                if ((int)data->_35_DictEntryOffset < 2)
+                if (data->_35_DictEntryOffset < 2)
                 {
                     data->_35_DictEntryOffset = 2;
                     return false;
                 }
-                if (8 < (int)data->_35_DictEntryOffset)
+                if (8 < data->_35_DictEntryOffset)
                 {
                     data->_35_DictEntryOffset = 8;
                     return false;
@@ -509,7 +507,7 @@ namespace MahoyoHDRepack
                 return (_mdiffltemax &&
                     _34lt_max &&
                     _34gtm1 &&
-                    (_max_32_33lt16 && ((int)_32 <= (int)_33 && (_32lt16 && (_32gt2 && (_31lt16 && _31gt2))))));
+                    (_max_32_33lt16 && (_32 <= _33 && (_32lt16 && (_32gt2 && (_31lt16 && _31gt2))))));
             }
 
             private static int lz_read_header(NativeSpan* pDataPtr)
@@ -596,7 +594,7 @@ namespace MahoyoHDRepack
 
             private static uint DecompressData(LzHeaderData* headerData, NativeSpan* decompressedData, NativeSpan* compressedData, int baseIdx, int prevBitPos, uint fileLen, HuffmanTableEntry* huffmanTable, uint startEntry)
             {
-                uint resultDictEntry, _34_bitShift, uVar4, sgn7, u_zero;
+                uint resultDictEntry, lookbehindBitCount2, uVar4, sgn7, u_zero;
                 ulong uVar5;
                 int iVar5, iVar6, bitOffs, cidx, nextIndex;
                 byte bVar8, curByte, maskedByte;
@@ -653,7 +651,7 @@ namespace MahoyoHDRepack
                         }
 
                         nextIndex += offsAmt;
-                        resultDictEntry += headerData->_35_DictEntryOffset;
+                        resultDictEntry += (uint)headerData->_35_DictEntryOffset;
 
                         var sndDictResul = LenZu_DecodeHuffmanSequence(pCompressed, nextIndex, nextBitOffs, tableBitCount, huffmanTable, startEntry, &dictBitLength);
                         // ReadFromDictSequence failed
@@ -675,45 +673,44 @@ namespace MahoyoHDRepack
                         cidx = nextIndex + offsAmt2;
                         uint lookbehindBaseAmount = 0;
 
-                        _34_bitShift = headerData->_34_BitShift;
-                        curByte = (byte)_34_bitShift;
-                        if (8 < (int)_34_bitShift)
+                        var lookbehindBitCount = headerData->LookbehindBaseBitCount;
+                        if (8 < lookbehindBitCount)
                         {
                             (var readMaskedByte, var nextAdjustB) = ReadUnalignedBitsStartingAtIndex(&pCompressed[cidx], prevBitPos);
                             nextBitOffs = nextAdjustB;
 
-                            _34_bitShift -= 8;
+                            lookbehindBitCount -= 8;
                             cidx += nextBitOffs;
-                            lookbehindBaseAmount = (uint)readMaskedByte << ((byte)_34_bitShift & 0x1f);
+                            lookbehindBaseAmount = (uint)readMaskedByte << ((byte)lookbehindBitCount & 0x1f);
                         }
-                        if (0 < (int)_34_bitShift)
+                        if (0 < lookbehindBitCount)
                         {
-                            (var readMaskedByte, var nextBitOffsB) = ReadUnalignedBitsStartingAtIndex(&pCompressed[cidx], prevBitPos, (int)_34_bitShift);
+                            (var readMaskedByte, var nextBitOffsB) = ReadUnalignedBitsStartingAtIndex(&pCompressed[cidx], prevBitPos, lookbehindBitCount);
                             nextBitOffs = nextBitOffsB;
 
-                            _34_bitShift = (uint)(prevBitPos - (_34_bitShift % 8));
-                            uVar4 = _34_bitShift - 8;
-                            if ((int)_34_bitShift < 8)
+                            lookbehindBitCount = prevBitPos - (lookbehindBitCount % 8);
+                            var tmp1 = lookbehindBitCount - 8;
+                            if (lookbehindBitCount < 8)
                             {
-                                uVar4 = _34_bitShift;
+                                tmp1 = lookbehindBitCount;
                             }
-                            prevBitPos = (int)uVar4 + 8;
-                            if (-1 < (int)uVar4)
+                            prevBitPos = tmp1 + 8;
+                            if (-1 < tmp1)
                             {
-                                prevBitPos = (int)uVar4;
+                                prevBitPos = tmp1;
                             }
                             cidx += nextBitOffs;
                             lookbehindBaseAmount |= readMaskedByte;
                         }
                         if (0 < (int)resultDictEntry)
                         {
-                            _34_bitShift = headerData->_35_DictEntryOffset;
+                            lookbehindBitCount = headerData->_35_DictEntryOffset;
                             uVar5 = resultDictEntry;
                             do
                             {
                                 if ((int)u_zero < fileLen)
                                 {
-                                    *pDecompressed = pDecompressed[-(long)(int)(lookbehindBaseAmount + (sndDictResul << (int)(headerData->_34_BitShift & 0x1f)) + _34_bitShift)];
+                                    *pDecompressed = pDecompressed[-(long)(int)(lookbehindBaseAmount + (sndDictResul << (headerData->LookbehindBaseBitCount & 0x1f)) + lookbehindBitCount)];
                                     pDecompressed += 1;
                                     u_zero += 1;
                                 }
@@ -723,10 +720,9 @@ namespace MahoyoHDRepack
                         }
                     }
                     if ((int)resultDictEntry < 0) break;
-                    _34_bitShift = (uint)(dictBitLength >> 0x1f & 7);
-                    var dictBitLengthPlusBitShift = dictBitLength + _34_bitShift;
-                    cidx = (int)dictBitLengthPlusBitShift >> 3;
-                    prevBitPos = nextBitOffs - (int)((dictBitLengthPlusBitShift & 7) - _34_bitShift);
+
+                    cidx = dictBitLength / 8;
+                    prevBitPos = nextBitOffs - (dictBitLength % 8);
                     if (7 < prevBitPos)
                     {
                         prevBitPos -= 8;

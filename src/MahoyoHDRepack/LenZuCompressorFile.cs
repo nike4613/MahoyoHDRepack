@@ -31,7 +31,7 @@ namespace MahoyoHDRepack
             public int _32; // [3..15]
             public int Max_32_33; // max of _32 and byte at 0x33 in file
             public int LookbehindLowBitCount; // [0..above field] + some other constraints
-            public int _35_DictEntryOffset; // [2..8]
+            public int LookbehindBaseDistance; // [2..8]
             public int Max_31_32_HuffTableBitCount; // max of _31 and _32
             public uint _30;
         }
@@ -416,7 +416,7 @@ namespace MahoyoHDRepack
                 lz_data->_32 = pData[2];
                 lz_data->Max_32_33 = pData[3];
                 lz_data->LookbehindLowBitCount = pData[4];
-                lz_data->_35_DictEntryOffset = pData[5];
+                lz_data->LookbehindBaseDistance = pData[5];
 
                 *reusltSubByteAlignment = subByteAlignmentUnused;
 
@@ -492,14 +492,14 @@ namespace MahoyoHDRepack
                     data->LookbehindLowBitCount = _max_32_33 - _31;
                 }
 
-                if (data->_35_DictEntryOffset < 2)
+                if (data->LookbehindBaseDistance < 2)
                 {
-                    data->_35_DictEntryOffset = 2;
+                    data->LookbehindBaseDistance = 2;
                     return false;
                 }
-                if (8 < data->_35_DictEntryOffset)
+                if (8 < data->LookbehindBaseDistance)
                 {
-                    data->_35_DictEntryOffset = 8;
+                    data->LookbehindBaseDistance = 8;
                     return false;
                 }
                 return _mdiffltemax &&
@@ -596,9 +596,48 @@ namespace MahoyoHDRepack
 
             private static int WrapAt8(int i) => ((i % 8) + 8) % 8;
 
+            /// <summary>
+            /// Decodes the compressed data.
+            /// </summary>
+            /// <remarks>
+            /// <para>
+            /// The compressed data consists of a sequence of 'instructions', where each 'instruction' encodes BOTH a lookbehind AND a literal. All instructions
+            /// are compactly encoded, using as few bits as possible in the bitstream.
+            /// </para>
+            /// <para>
+            /// The compressed datastream is a stream of <em>bits</em>, not a stream of bytes. As such, the decompression code has to be very careful
+            /// to always keep track of which bit in the current byte is being referred to. (Note that for some reason the bits in each byte are treated as
+            /// big-endian order, so the first bit in each byte is bit 7 (the high bit), and the last is bit 0 (the low bit).)
+            /// </para>
+            /// <para>
+            /// The first bit in each instruction indicates whether or nor this instruction includes a lookbehind. If the bit is 1, it does, and if the bit is 0, it
+            /// doesn't. The following bits are a Huffman-coded sequence representing the a value we'll call X. X serves two purposes: it is the number of bytes
+            /// to copy from earlier in the output stream, AND the 1-based number of literal bytes in the compressed stream. (This scheme actually confuses me somewhat,
+            /// because it seems to mean that it's giving up a great deal of possible encoding density by REQUIRING that every lookbehind be followed by a literal.)
+            /// </para>
+            /// <para>
+            /// If this instruction encodes a lookbehind, X is incremented by the header value <see cref="LzHeaderData.LookbehindBaseDistance"/> (which is the 6th byte after
+            /// the main header). The next bits are another Huffman sequence (from the same code!) which encode the high bits of the backreference distance offset. The next
+            /// <see cref="LzHeaderData.LookbehindLowBitCount"/> bits are a normally-encoded big-endian integer (no more than 16 bits!) which are the low bits of the backref
+            /// distance offset. These values are concatenated, then added to <see cref="LzHeaderData.LookbehindBaseDistance"/> to compute the actual distance. Each byte is
+            /// copied one-by-one, so the new data can overlap the backreferenced data (as is common in LZ77 algorithms) Then, the next X + 1 octets (8 bit bytes, at whatever
+            /// alignment in the bitstream the encoder happens to be in at this point) are copied verbatim to the output, as a literal. The instruction is now completed.
+            /// </para>
+            /// <para>
+            /// The parameters to this function mostly describe where in the bitstream and Huffman table to start. While there are a lot of them, they're mostly uninteresting.
+            /// </para>
+            /// </remarks>
+            /// <param name="headerData"></param>
+            /// <param name="decompressedData"></param>
+            /// <param name="compressedData"></param>
+            /// <param name="baseIdx"></param>
+            /// <param name="prevBitPos"></param>
+            /// <param name="fileLen"></param>
+            /// <param name="huffmanTable"></param>
+            /// <param name="startEntry"></param>
+            /// <returns></returns>
             private static int DecompressData(LzHeaderData* headerData, NativeSpan* decompressedData, NativeSpan* compressedData, int baseIdx, int prevBitPos, uint fileLen, HuffmanTableEntry* huffmanTable, uint startEntry)
             {
-                //int lookbehindCount;
                 int cidx, nextIndex;
                 byte curByte;
                 byte* pCompressed, pDecompressed;
@@ -654,7 +693,7 @@ namespace MahoyoHDRepack
                         }
 
                         nextIndex += offsAmt;
-                        lookbehindCount += headerData->_35_DictEntryOffset;
+                        lookbehindCount += headerData->LookbehindBaseDistance;
 
                         var lookbehindHighBits = LenZu_DecodeHuffmanSequence(pCompressed, nextIndex, nextBitOffs, tableBitCount, huffmanTable, startEntry, &dictBitLength);
                         // ReadFromDictSequence failed
@@ -705,13 +744,12 @@ namespace MahoyoHDRepack
                         // decode a lookbehind
                         if (0 < lookbehindCount)
                         {
-                            lookbehindBitCount = headerData->_35_DictEntryOffset;
                             var iterVar = lookbehindCount;
                             do
                             {
                                 if (currentFileOffset < fileLen)
                                 {
-                                    *pDecompressed = pDecompressed[-(long)(int)(lookbehindLowBits + (lookbehindHighBits << headerData->LookbehindLowBitCount) + lookbehindBitCount)];
+                                    *pDecompressed = pDecompressed[-(long)(int)(lookbehindLowBits + (lookbehindHighBits << headerData->LookbehindLowBitCount) + headerData->LookbehindBaseDistance)];
                                     pDecompressed += 1;
                                     currentFileOffset += 1;
                                 }
@@ -736,7 +774,7 @@ namespace MahoyoHDRepack
                     }
                     cidx = nextIndex + cidx;
 
-                    // decode an unaligned literal
+                    // decode a possibly-unaligned literal
                     if (0 < lookbehindCount + 1)
                     {
                         var iterVar = lookbehindCount + 1;

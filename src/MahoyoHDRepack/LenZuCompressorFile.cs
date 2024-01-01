@@ -30,7 +30,7 @@ namespace MahoyoHDRepack
             public int _31; // [3..15]
             public int _32; // [3..15]
             public int Max_32_33; // max of _32 and byte at 0x33 in file
-            public int LookbehindBaseBitCount; // [0..above field] + some other constraints
+            public int LookbehindLowBitCount; // [0..above field] + some other constraints
             public int _35_DictEntryOffset; // [2..8]
             public int Max_31_32_HuffTableBitCount; // max of _31 and _32
             public uint _30;
@@ -415,7 +415,7 @@ namespace MahoyoHDRepack
                 lz_data->_31 = pData[1];
                 lz_data->_32 = pData[2];
                 lz_data->Max_32_33 = pData[3];
-                lz_data->LookbehindBaseBitCount = pData[4];
+                lz_data->LookbehindLowBitCount = pData[4];
                 lz_data->_35_DictEntryOffset = pData[5];
 
                 *reusltSubByteAlignment = subByteAlignmentUnused;
@@ -475,21 +475,21 @@ namespace MahoyoHDRepack
                     data->Max_32_33 = _max_32_33 = 0xf;
                 }
 
-                var _34 = data->LookbehindBaseBitCount;
+                var _34 = data->LookbehindLowBitCount;
                 var _34gtm1 = -1 < _32;
                 if (!_34gtm1)
                 {
-                    data->LookbehindBaseBitCount = _34 = 0;
+                    data->LookbehindLowBitCount = _34 = 0;
                 }
                 var _34lt_max = _34 < _max_32_33;
                 if (!_34lt_max)
                 {
-                    data->LookbehindBaseBitCount = _34 = _max_32_33 - 1;
+                    data->LookbehindLowBitCount = _34 = _max_32_33 - 1;
                 }
                 var _mdiffltemax = _max_32_33 - _34 <= _31;
                 if (!_mdiffltemax)
                 {
-                    data->LookbehindBaseBitCount = _max_32_33 - _31;
+                    data->LookbehindLowBitCount = _max_32_33 - _31;
                 }
 
                 if (data->_35_DictEntryOffset < 2)
@@ -594,9 +594,11 @@ namespace MahoyoHDRepack
                 return 0x20;
             }
 
+            private static int WrapAt8(int i) => ((i % 8) + 8) % 8;
+
             private static int DecompressData(LzHeaderData* headerData, NativeSpan* decompressedData, NativeSpan* compressedData, int baseIdx, int prevBitPos, uint fileLen, HuffmanTableEntry* huffmanTable, uint startEntry)
             {
-                int resultDictEntry;
+                //int lookbehindCount;
                 int cidx, nextIndex;
                 byte curByte;
                 byte* pCompressed, pDecompressed;
@@ -610,6 +612,7 @@ namespace MahoyoHDRepack
                 while (true)
                 {
                     int nextBitOffs;
+                    int lookbehindCount;
                     while (true)
                     {
                         if ((fileLen <= currentFileOffset) || (compressedData->Length <= cidx + baseIdx))
@@ -625,7 +628,7 @@ namespace MahoyoHDRepack
                         // we only increment cidx when we wrapped into the next byte
                         nextIndex = prevBitPos - 1 >= 0 ? cidx : cidx + 1;
 
-                        resultDictEntry = LenZu_DecodeHuffmanSequence(pCompressed, nextIndex, nextBitOffs, tableBitCount, huffmanTable, startEntry, &dictBitLength);
+                        lookbehindCount = LenZu_DecodeHuffmanSequence(pCompressed, nextIndex, nextBitOffs, tableBitCount, huffmanTable, startEntry, &dictBitLength);
 
                         if (((curByte >> ((byte)prevBitPos)) & 1) == 0)
                         {
@@ -634,12 +637,12 @@ namespace MahoyoHDRepack
                         }
 
                         // ReadFromDictSequenceFailed
-                        if (resultDictEntry < 0) return -nextIndex;
+                        if (lookbehindCount < 0) return -nextIndex;
 
                         var offsAmt = dictBitLength / 8;
                         nextBitOffs -= dictBitLength % 8;
 
-                        if (7 < nextBitOffs)
+                        if (nextBitOffs >= 8)
                         {
                             offsAmt += -1;
                             nextBitOffs += -8;
@@ -651,15 +654,16 @@ namespace MahoyoHDRepack
                         }
 
                         nextIndex += offsAmt;
-                        resultDictEntry += headerData->_35_DictEntryOffset;
+                        lookbehindCount += headerData->_35_DictEntryOffset;
 
-                        var sndDictResul = LenZu_DecodeHuffmanSequence(pCompressed, nextIndex, nextBitOffs, tableBitCount, huffmanTable, startEntry, &dictBitLength);
+                        var lookbehindHighBits = LenZu_DecodeHuffmanSequence(pCompressed, nextIndex, nextBitOffs, tableBitCount, huffmanTable, startEntry, &dictBitLength);
                         // ReadFromDictSequence failed
-                        if (sndDictResul < 0) return -nextIndex;
+                        if (lookbehindHighBits < 0) return -nextIndex;
 
                         var offsAmt2 = dictBitLength / 8;
                         prevBitPos = nextBitOffs - (dictBitLength % 8);
-                        if (7 < prevBitPos)
+
+                        if (prevBitPos >= 8)
                         {
                             prevBitPos -= 8;
                             offsAmt2 += -1;
@@ -671,9 +675,11 @@ namespace MahoyoHDRepack
                         }
 
                         cidx = nextIndex + offsAmt2;
-                        uint lookbehindBaseAmount = 0;
+                        uint lookbehindLowBits = 0;
 
-                        var lookbehindBitCount = headerData->LookbehindBaseBitCount;
+                        var lookbehindBitCount = headerData->LookbehindLowBitCount;
+                        // interestingly, even though the implementation of ReadUnalignedBitsStartingAtIndex (mostly) supports up to 16-bit reads,
+                        // the implementation does reads first in a block of 8, then in the remainder. 
                         if (8 < lookbehindBitCount)
                         {
                             (var readMaskedByte, var nextAdjustB) = ReadUnalignedBitsStartingAtIndex(&pCompressed[cidx], prevBitPos);
@@ -681,7 +687,7 @@ namespace MahoyoHDRepack
 
                             lookbehindBitCount -= 8;
                             cidx += nextBitOffs;
-                            lookbehindBaseAmount = (uint)readMaskedByte << ((byte)lookbehindBitCount & 0x1f);
+                            lookbehindLowBits = (uint)readMaskedByte << lookbehindBitCount;
                         }
                         if (0 < lookbehindBitCount)
                         {
@@ -689,30 +695,23 @@ namespace MahoyoHDRepack
                             nextBitOffs = nextBitOffsB;
 
                             lookbehindBitCount = prevBitPos - (lookbehindBitCount % 8);
-                            var tmp1 = lookbehindBitCount - 8;
-                            if (lookbehindBitCount < 8)
-                            {
-                                tmp1 = lookbehindBitCount;
-                            }
-                            prevBitPos = tmp1 + 8;
-                            if (-1 < tmp1)
-                            {
-                                prevBitPos = tmp1;
-                            }
+
+                            prevBitPos = WrapAt8(lookbehindBitCount);
+
                             cidx += nextBitOffs;
-                            lookbehindBaseAmount |= readMaskedByte;
+                            lookbehindLowBits |= readMaskedByte;
                         }
 
                         // decode a lookbehind
-                        if (0 < resultDictEntry)
+                        if (0 < lookbehindCount)
                         {
                             lookbehindBitCount = headerData->_35_DictEntryOffset;
-                            var iterVar = resultDictEntry;
+                            var iterVar = lookbehindCount;
                             do
                             {
                                 if (currentFileOffset < fileLen)
                                 {
-                                    *pDecompressed = pDecompressed[-(long)(int)(lookbehindBaseAmount + (sndDictResul << (headerData->LookbehindBaseBitCount & 0x1f)) + lookbehindBitCount)];
+                                    *pDecompressed = pDecompressed[-(long)(int)(lookbehindLowBits + (lookbehindHighBits << headerData->LookbehindLowBitCount) + lookbehindBitCount)];
                                     pDecompressed += 1;
                                     currentFileOffset += 1;
                                 }
@@ -721,11 +720,11 @@ namespace MahoyoHDRepack
                             while (iterVar != 0);
                         }
                     }
-                    if (resultDictEntry < 0) break;
+                    if (lookbehindCount < 0) break;
 
                     cidx = dictBitLength / 8;
                     prevBitPos = nextBitOffs - (dictBitLength % 8);
-                    if (7 < prevBitPos)
+                    if (prevBitPos >= 8)
                     {
                         prevBitPos -= 8;
                         cidx += -1;
@@ -738,9 +737,9 @@ namespace MahoyoHDRepack
                     cidx = nextIndex + cidx;
 
                     // decode an unaligned literal
-                    if (0 < resultDictEntry + 1)
+                    if (0 < lookbehindCount + 1)
                     {
-                        var iterVar = resultDictEntry + 1;
+                        var iterVar = lookbehindCount + 1;
                         do
                         {
                             if (currentFileOffset < fileLen)

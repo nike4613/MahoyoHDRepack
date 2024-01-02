@@ -20,6 +20,8 @@
   </ItemGroup>
   
   <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Diagnostics" Version="8.2.2" />
+    <PackageReference Include="CommunityToolkit.HighPerformance" Version="8.2.2" />
     <PackageReference Include="Csv" Version="2.0.93" />
     <PackageReference Include="FuzzySharp" Version="2.0.2" />
     <PackageReference Include="SharpZipLib" Version="1.4.2" />

@@ -187,6 +187,10 @@ namespace MahoyoHDRepack
                             baseIdx += lenBytesRead;
 
                             // build up the rest of the table
+                            // the algorithm is kinda strange: in the file, is a list of 32-bit integers. This list populates the lowest index entries 'order' fields.
+                            // In each step of the algorithm, one more element is populated, above those specified in the file. It's children are the 2 smallest-valued
+                            // (but nonzero) entries which are not already children of another entry. The smallest-valued entry corresponds to the 1 bit, and the second
+                            // smallest corresponds with the 0 bit. Each new entry has a value which is the sum This process stops when there is only one unassigned element left.
                             var currentEntry = firstRealTableEntry;
                             uint idxOfSmallest, smallest, sndSmallest, entry_0;
                             while (true)
@@ -796,6 +800,13 @@ namespace MahoyoHDRepack
                 return -nextIndex;
             }
 
+            /// <summary>
+            /// Each entry represents a bit. The lowest index entries are terminals, and their index is the final value.
+            /// </summary>
+            /// <remarks>
+            /// <see cref="Child1"/> and <see cref="Child2"/> are checked sequentially for the one with the correct <see cref="BitValue"/>
+            /// for the bit in the sequence.
+            /// </remarks>
             public struct HuffmanTableEntry
             {
                 public uint TableConstructOrderVal;
@@ -845,19 +856,17 @@ namespace MahoyoHDRepack
             // returns the dictionary entry index after the read
             private static int LenZu_DecodeHuffmanSequence(byte* pCompressed, int startIndex, int readShift, int numBits, HuffmanTableEntry* table, uint startEntry, int* bitSequenceLength)
             {
-                uint firstRealHuffEntry, bitsRead;
                 long readIndex;
                 uint tableEntry;
-                uint nextDictEntry;
-                int mask;
-                byte readValue;
 
-                bitsRead = 0;
-                mask = GetMaskFromBitCount(numBits);
-                firstRealHuffEntry = (uint)(mask + 1);
+                var bitsRead = 0;
+                var mask = GetMaskFromBitCount(numBits);
+                var firstRealHuffEntry = (uint)(mask + 1);
                 var tblSize = GetDictionarySize(mask);
                 var persistResultVar = -1;
                 var resultVal = -1;
+
+                // read a Huffman sequence, using startEntry as the start of the tree
                 if (firstRealHuffEntry < startEntry)
                 {
                     if ((firstRealHuffEntry != 0) && (tblSize != 0))
@@ -868,11 +877,11 @@ namespace MahoyoHDRepack
                         {
                             if (tableEntry < firstRealHuffEntry)
                             {
-                                *bitSequenceLength = (int)bitsRead;
+                                *bitSequenceLength = bitsRead;
                                 return (int)tableEntry;
                             }
-                            readValue = (byte)((pCompressed[readIndex] >> ((byte)readShift & 0x1f)) & 1);
-                            nextDictEntry = table[tableEntry].Child1;
+                            var readValue = (byte)((pCompressed[readIndex] >> ((byte)readShift & 0x1f)) & 1);
+                            var nextDictEntry = table[tableEntry].Child1;
                             if (table[nextDictEntry].BitValue != readValue)
                             {
                                 nextDictEntry = table[tableEntry].Child2;
@@ -893,11 +902,14 @@ namespace MahoyoHDRepack
                             readIndex = nextIndex;
                             tableEntry = nextDictEntry;
                         }
-                        *bitSequenceLength = (int)bitsRead;
+                        *bitSequenceLength = bitsRead;
                         return -1;
                     }
                     return -1;
                 }
+
+                // if, somehow, the startEntry is within the numeric value range, we instead select the highest-index LESS than startEntry with a nonzero TableConstructOrderVal.
+                // Why this forward-iterates instead of backward iterating from startEntry and breaking out, one can only guess.
                 if (startEntry != 0)
                 {
                     var iterVar = 0;

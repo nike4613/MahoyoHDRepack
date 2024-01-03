@@ -246,7 +246,7 @@ public sealed class MzpFileSystem : CopyOnWriteFileSystem
                 entry.Attributes = NxFileAttributes.None;
                 entry.Type = DirectoryEntryType.File;
 
-                entry.Size = fs.entries[i].Size;
+                entry.Size = fs.entries[baseIdx + i].Size;
 
                 var nameSpan = entry.Name.Items;
                 nameSpan.Clear();

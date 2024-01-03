@@ -2,6 +2,7 @@
 using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
 using LibHac.Common;
 using LibHac.Fs;
@@ -18,14 +19,15 @@ internal static class ExtractAll
         IFileSystem rootFs,
         DirectoryInfo outPath,
         bool noDecompress,
-        bool noArchive
+        bool noArchive,
+        KnownFileTypes[] doNotProcess
     )
     {
         _ = Directory.CreateDirectory(outPath.FullName);
         using var targetFs = new LocalFileSystem(outPath.FullName);
 
         var targetPath = GetRootPath();
-        RecursiveExtractAll(rootFs, targetPath, targetFs, targetPath, noDecompress, noArchive);
+        RecursiveExtractAll(rootFs, targetPath, targetFs, targetPath, noDecompress, noArchive, doNotProcess);
     }
 
     private static Path GetRootPath()
@@ -95,7 +97,7 @@ internal static class ExtractAll
         while (true);
     }
 
-    private static void RecursiveExtractAll(IFileSystem rootFs, Path rootFsPath, IFileSystem targetFs, Path targetFsPath, bool noDecompress, bool noArchive)
+    private static void RecursiveExtractAll(IFileSystem rootFs, Path rootFsPath, IFileSystem targetFs, Path targetFsPath, bool noDecompress, bool noArchive, KnownFileTypes[] doNotProcess)
     {
         static Path.Stored ToStored(Path path)
         {
@@ -146,7 +148,7 @@ internal static class ExtractAll
 
                         // first, we check for the archive case
                         // check for the MRG archive case explicitly, because MRG files are truly bizarre
-                        if (!noArchive && (nameSpan.EndsWith(".mrg"u8) || nameSpan.EndsWith(".MRG"u8)))
+                        if (!noArchive && !doNotProcess.Contains(KnownFileTypes.Mrg) && (nameSpan.EndsWith(".mrg"u8) || nameSpan.EndsWith(".MRG"u8)))
                         {
                             // we need to strip the MRG suffix from the path we pass to MrgFileSystem, because it needs to look for
                             // sidecar files. I don't want to bother trying to filter those sidecar files from the output, so they get
@@ -160,7 +162,7 @@ internal static class ExtractAll
                                 Helpers.DAssert(mrgFs is not null);
                                 using var fs = mrgFs;
                                 ForceCreateDirInFs(targetFs, dstPath);
-                                RecursiveExtractAll(fs, GetRootPath(), targetFs, dstPath, noDecompress, noArchive);
+                                RecursiveExtractAll(fs, GetRootPath(), targetFs, dstPath, noDecompress, noArchive, doNotProcess);
                                 goto doneProcessingFile;
                             }
                             // if result wasn't a success, then this wasn't a valid MRG archive, so we're done
@@ -184,37 +186,43 @@ internal static class ExtractAll
                             {
                                 var kind = FileScanner.ProbeForFileType(openFile.Get);
                                 using UniqueRef<IFileSystem> archiveFileSystem = default;
-                                switch (kind)
+
+                                if (!doNotProcess.Contains(kind))
                                 {
-                                    case KnownFileTypes.Mzp when !noArchive:
-                                        MzpFileSystem.Read(ref archiveFileSystem.Ref, storageToCopy).ThrowIfFailure();
-                                        break;
-                                    case KnownFileTypes.Hfa when !noArchive:
-                                        HfaFileSystem.Read(ref archiveFileSystem.Ref, storageToCopy).ThrowIfFailure();
-                                        break;
+                                    switch (kind)
+                                    {
+                                        case KnownFileTypes.Mzp when !noArchive:
+                                            MzpFileSystem.Read(ref archiveFileSystem.Ref, storageToCopy).ThrowIfFailure();
+                                            break;
+                                        case KnownFileTypes.Hfa when !noArchive:
+                                            HfaFileSystem.Read(ref archiveFileSystem.Ref, storageToCopy).ThrowIfFailure();
+                                            break;
 
-                                    case KnownFileTypes.Nxx when !noDecompress:
-                                        storageToCopy = NxxFile.TryCreate(openFile.Get).AsStorage();
-                                        break;
-                                    case KnownFileTypes.LenZuCompressor when !noDecompress:
-                                        storageToCopy = LenZuCompressorFile.ReadCompressed(storageToCopy);
-                                        break;
+                                        case KnownFileTypes.Nxx when !noDecompress:
+                                            storageToCopy = NxxFile.TryCreate(openFile.Get).AsStorage();
+                                            break;
+                                        case KnownFileTypes.LenZuCompressor when !noDecompress:
+                                            storageToCopy = LenZuCompressorFile.ReadCompressed(storageToCopy);
+                                            break;
 
-                                    case KnownFileTypes.Unknown:
-                                    case KnownFileTypes.Mzx:
-                                    default:
-                                        // we don't know what this file is, (or rather, how to process it), or we shouldn't process it
-                                        break;
+                                        case KnownFileTypes.Unknown:
+                                        case KnownFileTypes.Mzx:
+                                        default:
+                                            // we don't know what this file is, (or rather, how to process it), or we shouldn't process it
+                                            break;
+                                    }
                                 }
 
                                 if (archiveFileSystem.Get is { } fs)
                                 {
                                     Helpers.DAssert(!noArchive);
                                     ForceCreateDirInFs(targetFs, dstPath);
-                                    RecursiveExtractAll(fs, GetRootPath(), targetFs, dstPath, noDecompress, noArchive);
+                                    RecursiveExtractAll(fs, GetRootPath(), targetFs, dstPath, noDecompress, noArchive, doNotProcess);
                                     goto doneProcessingFile;
                                 }
                             }
+
+                            Console.Write(Encoding.UTF8.GetString(dstPath.AsSpan()) + "                                                         \r");
 
                             // storageToCopy now contains the IStorage to copy into the target fs
                             storageToCopy.GetSize(out var totalSize).ThrowIfFailure();

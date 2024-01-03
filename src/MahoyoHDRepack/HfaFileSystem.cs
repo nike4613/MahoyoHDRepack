@@ -80,9 +80,10 @@ namespace MahoyoHDRepack
             for (var i = 0; i < entries.Length; i++)
             {
                 // some archives have the same file in multiple times...
-                if (!nameToIdx.TryAdd(entries[i].FileName, i))
+                while (!nameToIdx.TryAdd(entries[i].FileName, i))
                 {
-                    nameToIdx.Add(entries[i].FileName + i, i);
+                    Console.WriteLine($"rewriting {entries[i].FileName} at index {i}");
+                    entries[i].FileName += "_";
                 }
             }
         }
@@ -274,11 +275,11 @@ namespace MahoyoHDRepack
                     entry.Attributes = NxFileAttributes.None;
                     entry.Type = DirectoryEntryType.File;
 
-                    entry.Size = fs.entries[i].CowEntry.Size;
+                    entry.Size = fs.entries[baseIdx + i].CowEntry.Size;
 
                     var nameSpan = entry.Name.Items;
                     nameSpan.Clear();
-                    _ = Encoding.UTF8.GetBytes(fs.entries[i].FileName, nameSpan);
+                    _ = Encoding.UTF8.GetBytes(fs.entries[baseIdx + i].FileName, nameSpan);
                 }
                 entriesRead = i;
                 baseIdx += i;

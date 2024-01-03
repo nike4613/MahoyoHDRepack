@@ -55,6 +55,7 @@ internal static class FileScanner
 public enum KnownFileTypes
 {
     Unknown,
+    Mrg,
     Mzp,
     Mzx,
     Nxx,

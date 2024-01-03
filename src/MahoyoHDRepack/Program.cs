@@ -3,6 +3,7 @@ using System.CommandLine;
 using System.CommandLine.Invocation;
 using System.CommandLine.IO;
 using System.IO;
+using System.Security.Principal;
 using LibHac.Fs.Fsa;
 using LibHac.FsSystem;
 using MahoyoHDRepack;
@@ -45,6 +46,12 @@ var outDir = new Option<DirectoryInfo>(
     new[] { "--out", "-o" }, "Output directory")
 {
     IsRequired = true,
+};
+
+var doNotProcessKinds = new Option<KnownFileTypes[]>(
+    new[] { "--no-process", "-e" }, "File types to not process")
+{
+
 };
 
 rootCmd.AddGlobalOption(ryuBasePath);
@@ -110,7 +117,7 @@ var noArchive = new Option<bool>("--no-arc", "Do not treat archives as directori
 
     var cmd = new Command("extract-all", "Extracts the entire virtual filesystem to a target directory")
     {
-        xciFile, targetDir, raw, noArchive, gameDir
+        xciFile, targetDir, raw, noArchive, gameDir, doNotProcessKinds,
     };
 
     cmd.SetHandler(Exec);
@@ -121,7 +128,8 @@ var noArchive = new Option<bool>("--no-arc", "Do not treat archives as directori
         ExtractAll.Run(rootfs,
             context.ParseResult.GetValueForArgument(targetDir),
             context.ParseResult.GetValueForOption(raw),
-            context.ParseResult.GetValueForOption(noArchive));
+            context.ParseResult.GetValueForOption(noArchive),
+            context.ParseResult.GetValueForOption(doNotProcessKinds) ?? Array.Empty<KnownFileTypes>());
     });
 }
 

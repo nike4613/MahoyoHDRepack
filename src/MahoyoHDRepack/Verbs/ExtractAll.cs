@@ -204,9 +204,11 @@ internal static class ExtractAll
                                         case KnownFileTypes.LenZuCompressor when !noDecompress:
                                             storageToCopy = LenZuCompressorFile.ReadCompressed(storageToCopy);
                                             break;
+                                        case KnownFileTypes.Mzx when !noDecompress:
+                                            storageToCopy = MzxFile.ReadCompressed(storageToCopy);
+                                            break;
 
                                         case KnownFileTypes.Unknown:
-                                        case KnownFileTypes.Mzx:
                                         default:
                                             // we don't know what this file is, (or rather, how to process it), or we shouldn't process it
                                             break;

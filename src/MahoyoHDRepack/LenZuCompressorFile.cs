@@ -1,12 +1,8 @@
 ﻿using System;
 using System.Linq;
-using System.Numerics;
-using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using LibHac;
 using LibHac.Common;
 using LibHac.Fs;
-using Buffer = System.Buffer;
 
 namespace MahoyoHDRepack
 {

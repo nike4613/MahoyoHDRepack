@@ -44,7 +44,7 @@ internal static class FileScanner
             KnownFileTypes.Unknown => file,
             KnownFileTypes.Mzp => file, // this is an archive format, not a compressed file
             KnownFileTypes.Hfa => file, // this is an archive format, not a compressed file
-            KnownFileTypes.Mzx => throw new NotImplementedException(),
+            KnownFileTypes.Mzx => MzxFile.ReadCompressed(file.AsStorage()).AsFile(LibHac.Fs.OpenMode.Read),
             KnownFileTypes.Nxx => NxxFile.TryCreate(file),
             KnownFileTypes.LenZuCompressor => LenZuCompressorFile.ReadCompressed(file.AsStorage()).AsFile(LibHac.Fs.OpenMode.Read),
             _ => file

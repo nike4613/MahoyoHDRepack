@@ -531,10 +531,10 @@ namespace MahoyoHDRepack
             /// big-endian order, so the first bit in each byte is bit 7 (the high bit), and the last is bit 0 (the low bit).)
             /// </para>
             /// <para>
-            /// The first bit in each instruction indicates whether or nor this instruction includes a backreference. If the bit is 1, it does, and if the bit is 0, it
+            /// The first bit in each instruction indicates whether or nor this instruction is a backreference. If the bit is 1, it does, and if the bit is 0, it
             /// doesn't. The following bits are a Huffman-coded sequence representing the a value we'll call X. X serves two purposes: it is the number of bytes
-            /// to copy from earlier in the output stream, AND the 1-based number of literal bytes in the compressed stream. (This scheme actually confuses me somewhat,
-            /// because it seems to mean that it's giving up a great deal of possible encoding density by REQUIRING that every backreference be followed by a literal.)
+            /// to copy from earlier in the output stream, AND the 1-based number of literal bytes in the compressed stream. Note that is a backreference is used,
+            /// a literal is NOT used.
             /// </para>
             /// <para>
             /// If this instruction encodes a backreference, X is incremented by the header value <see cref="LzHeaderData.BackrefBaseDistance"/> (which is the 6th byte after
@@ -593,6 +593,7 @@ namespace MahoyoHDRepack
                         if (((curByte >> ((byte)prevBitPos)) & 1) == 0)
                         {
                             // break if the previous bit in the current byte was 0
+                            // 0 bit indicates literal, 1 bit indicates backref
                             break;
                         }
 

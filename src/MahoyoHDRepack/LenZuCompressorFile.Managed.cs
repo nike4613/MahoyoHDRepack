@@ -1,11 +1,8 @@
 ﻿using System;
 using System.Diagnostics;
+using System.Linq;
 using System.Runtime.InteropServices;
-using System.Text.Json.Serialization;
 using CommunityToolkit.Diagnostics;
-using LibHac;
-using Ryujinx.Common.Collections;
-using Ryujinx.Graphics.Texture.Astc;
 
 namespace MahoyoHDRepack
 {
@@ -97,6 +94,8 @@ namespace MahoyoHDRepack
             private int byteOffset;
             private int bitIndex; // 7->0
 
+            public bool IsAtEnd => byteOffset >= bytes.Length;
+
             public Bitstream(ReadOnlySpan<byte> bytes)
             {
                 this.bytes = bytes;
@@ -170,10 +169,10 @@ namespace MahoyoHDRepack
 
             var bitstream = new Bitstream(bodyData);
 
-            var table = ReadHuffmanTable(options, ref bitstream, out var startEntry);
+            var table = ReadHuffmanTable(options, ref bitstream);
 
             var resultData = new byte[decompressedLength];
-            var finalSize = DecompressCore(resultData, ref bitstream, table, startEntry);
+            var finalSize = DecompressCore(options, resultData, ref bitstream, table);
             if (finalSize != decompressedLength)
             {
                 resultData = resultData.AsSpan(0, finalSize).ToArray();
@@ -253,7 +252,14 @@ namespace MahoyoHDRepack
             public sbyte BitValue;
         }
 
-        private static ReadOnlySpan<HuffmanTableEntry> ReadHuffmanTable(in CompressorOptions options, ref Bitstream bitstream, out int startEntry)
+        private ref struct HuffmanTable(ReadOnlySpan<HuffmanTableEntry> table, int startEntry, int firstReal)
+        {
+            public readonly ReadOnlySpan<HuffmanTableEntry> Table = table;
+            public readonly int StartEntry = startEntry;
+            public readonly int FirstRealEntry = firstReal;
+        }
+
+        private static HuffmanTable ReadHuffmanTable(in CompressorOptions options, ref Bitstream bitstream)
         {
             var table = new HuffmanTableEntry[options.HuffTableMaxEntryCount];
             table.AsSpan().Fill(new()
@@ -326,9 +332,8 @@ namespace MahoyoHDRepack
                     {
                         table[idxOfSmallest].BitValue = 1;
                     }
-                    startEntry = current;
                     Helpers.Assert(current is not 0);
-                    return table;
+                    return new(table, current, firstRealEntry);
                 }
 
                 table[current].ConstructorValue = table[idxOfSecondSmallest].ConstructorValue + table[idxOfSmallest].ConstructorValue;
@@ -339,14 +344,86 @@ namespace MahoyoHDRepack
             }
 
             Debugger.Break();
-            startEntry = table.Length - 1;
-            return table;
+            return new(table, table.Length - 1, firstRealEntry);
         }
 
-        private static int DecompressCore(Span<byte> decompressed, ref Bitstream bitstream, scoped ReadOnlySpan<HuffmanTableEntry> table, int startEntry)
+        private static int DecompressCore(in CompressorOptions options, Span<byte> decompressed, ref Bitstream bitstream, scoped HuffmanTable table)
         {
-            throw new NotImplementedException();
+            var decompressedOffset = 0;
+            while (!bitstream.IsAtEnd)
+            {
+                var isBackref = bitstream.ReadBit();
+                var length = DecodeHuffmanSequence(ref bitstream, table);
+                Helpers.Assert(length >= 0);
 
+                if (isBackref)
+                {
+                    // backreference, read a distance
+                    length += options.BackrefBaseDistance;
+
+                    var distanceHighBits = DecodeHuffmanSequence(ref bitstream, table);
+                    Helpers.Assert(distanceHighBits >= 0);
+
+                    var distanceLowBits = 0;
+                    if (options.BackrefLowBitCount > 0)
+                    {
+                        distanceLowBits = bitstream.ReadBigEndian(options.BackrefLowBitCount);
+                    }
+
+                    var distance = distanceLowBits | (distanceHighBits << options.BackrefLowBitCount);
+                    distance += options.BackrefBaseDistance;
+                    for (var i = 0; i < length; i++)
+                    {
+                        decompressed[decompressedOffset] = decompressed[decompressedOffset - distance];
+                        decompressedOffset++;
+                    }
+                }
+                else
+                {
+                    // literal, read and write out that many bytes + 1
+                    for (var i = 0; i < length + 1; i++)
+                    {
+                        decompressed[decompressedOffset++] = (byte)bitstream.ReadBigEndian(8);
+                    }
+                }
+            }
+
+            return decompressedOffset;
+        }
+
+        private static int DecodeHuffmanSequence(ref Bitstream bitstream, scoped HuffmanTable table)
+        {
+            if (table.FirstRealEntry < table.StartEntry)
+            {
+                Helpers.Assert(table.FirstRealEntry > 0 && table.Table.Length > 0);
+                var tableEntry = table.StartEntry - 1;
+                while (tableEntry >= table.FirstRealEntry)
+                {
+                    var bit = bitstream.ReadBit() ? 1 : 0;
+
+                    var c1 = table.Table[tableEntry].Child1;
+                    var c2 = table.Table[tableEntry].Child2;
+
+                    tableEntry =
+                        table.Table[c1].BitValue == bit ? c1 :
+                        table.Table[c2].BitValue == bit ? c2 :
+                        ThrowHelper.ThrowInvalidOperationException<int>();
+                }
+                return tableEntry;
+            }
+
+            for (var i = table.StartEntry - 1; i >= 0; i--)
+            {
+                if (table.Table[i].ConstructorValue != 0)
+                {
+                    // this is the entry we care about
+                    // always consume a bit
+                    _ = bitstream.ReadBit();
+                    return i;
+                }
+            }
+
+            return ThrowHelper.ThrowInvalidOperationException<int>();
         }
     }
 }

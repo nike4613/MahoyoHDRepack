@@ -46,15 +46,16 @@ public sealed class MzpFileSystem : CopyOnWriteFileSystem
         public MzpEntry(uint size, uint offset)
         {
             var (sectors, bytes) = Math.DivRem(offset, SectorSize);
+            bytes |= (sectors >> 4) & 0xf000u;
             SectorOffset.Value = (ushort)sectors;
             ByteOffset.Value = (ushort)bytes;
 
-            SizeSectors.Value = (ushort)((size & ~0xffffu) / SectorSize);
+            SizeSectors.Value = (ushort)(((size & ~0xffffu) / SectorSize) + 2u);
             SizeBytes.Value = (ushort)(size & 0xffffu);
         }
 
-        public uint Size => ((SizeSectors * SectorSize) & ~0xffffu) | SizeBytes;
-        public uint Offset => (SectorOffset * SectorSize) + ByteOffset;
+        public uint Size => (uint)((((SizeSectors - 1) * SectorSize) & ~0xffffu) + SizeBytes.Value);
+        public uint Offset => ((SectorOffset + ((ByteOffset & 0xf000u) * 16)) * SectorSize) + (ByteOffset & 0xfffu);
 
         public CowEntry ToEntry(uint baseOffs) => new()
         {

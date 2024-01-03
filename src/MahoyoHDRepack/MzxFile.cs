@@ -69,11 +69,18 @@ namespace MahoyoHDRepack
 
             var count = 0;
 
-            for (var i = 0; i < compressedData.Length && outPos < decompressed.Length; i++)
+            for (var i = 0; i < compressedData.Length && outPos < decompressed.Length;)
             {
-                var b = compressedData[i];
+                if (count <= 0)
+                {
+                    count = 0x1000;
+                    last = 0;
+                }
+
+                var b = compressedData[i++];
                 var cmd = b & 3;
                 var len = b >> 2;
+
                 count -= cmd == 2 ? 1 : len + 1;
 
                 switch (cmd)
@@ -85,7 +92,7 @@ namespace MahoyoHDRepack
                         }
                         break;
                     case 1: // backref
-                        var k = compressedData[++i] + 1;
+                        var k = compressedData[i++] + 1;
                         for (var j = 0; j < len + 1 && outPos < decompressed.Length; j++)
                         {
                             decompressed[outPos] = last = decompressed[outPos - k];
@@ -97,9 +104,9 @@ namespace MahoyoHDRepack
                         break;
                     case 3: // literal
                     default:
-                        for (var j = 0; j < len + 1 && outPos < decompressed.Length; j++)
+                        for (var j = 0; j < len + 1 && outPos < decompressed.Length && i < compressedData.Length; j++)
                         {
-                            ringbuf[ringbufPos] = last = MemoryMarshal.Read<ushort>(compressedData.Slice(i));
+                            ringbuf[ringbufPos] = last = compressedData.Length - i < 2 ? compressedData[i] : MemoryMarshal.Read<ushort>(compressedData.Slice(i));
                             i += 2;
                             decompressed[outPos++] = last;
 

@@ -43,6 +43,7 @@ namespace MahoyoHDRepack
             result = compressedStorage.Read(0, compressedData);
             if (result.IsFailure()) return result.Miss();
 
+#if USE_DECOMP
             Attempt2.NativeSpan outSpan = default, compressedSpan = default;
 
             byte[] decompressedData;
@@ -72,6 +73,9 @@ namespace MahoyoHDRepack
                     NativeMemory.Free(outSpan.Data);
                 }
             }
+#else
+            var decompressedData = DecompressFile(compressedData);
+#endif
 
             uncompressed.Reset(MemoryStorage.Adopt(decompressedData));
             return Result.Success;

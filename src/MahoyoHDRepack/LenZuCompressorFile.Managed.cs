@@ -100,7 +100,7 @@ namespace MahoyoHDRepack
             {
                 this.bytes = bytes;
                 byteOffset = 0;
-                bitIndex = 0;
+                bitIndex = 7;
             }
 
             // TODO: this implementation can be significantly optimized
@@ -159,7 +159,7 @@ namespace MahoyoHDRepack
             var checksumLo = MemoryMarshal.Read<LEUInt32>(bodyData[8..]).Value;
             // last 4 here is unused....
 
-            var checksum = (ulong)(checksumHi << 32) | checksumLo;
+            var checksum = ((ulong)checksumHi << 32) | checksumLo;
 
             bodyData = bodyData[16..];
 
@@ -350,7 +350,7 @@ namespace MahoyoHDRepack
         private static int DecompressCore(in CompressorOptions options, Span<byte> decompressed, ref Bitstream bitstream, scoped HuffmanTable table)
         {
             var decompressedOffset = 0;
-            while (!bitstream.IsAtEnd)
+            while (decompressedOffset < decompressed.Length && !bitstream.IsAtEnd)
             {
                 var isBackref = bitstream.ReadBit();
                 var length = DecodeHuffmanSequence(ref bitstream, table);
@@ -372,7 +372,7 @@ namespace MahoyoHDRepack
 
                     var distance = distanceLowBits | (distanceHighBits << options.BackrefLowBitCount);
                     distance += options.BackrefBaseDistance;
-                    for (var i = 0; i < length; i++)
+                    for (var i = 0; i < length && decompressedOffset < decompressed.Length; i++)
                     {
                         decompressed[decompressedOffset] = decompressed[decompressedOffset - distance];
                         decompressedOffset++;
@@ -381,7 +381,7 @@ namespace MahoyoHDRepack
                 else
                 {
                     // literal, read and write out that many bytes + 1
-                    for (var i = 0; i < length + 1; i++)
+                    for (var i = 0; i < length + 1 && decompressedOffset < decompressed.Length; i++)
                     {
                         decompressed[decompressedOffset++] = (byte)bitstream.ReadBigEndian(8);
                     }

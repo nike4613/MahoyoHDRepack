@@ -32,9 +32,12 @@ namespace MahoyoHDRepack
 
         public override Result SetSize(long size)
         {
-            var newArr = GC.AllocateUninitializedArray<byte>((int)size);
-            Array.Copy(memory, 0, newArr, 0, Math.Min(size, Size));
-            memory = newArr;
+            if (size != Size)
+            {
+                var newArr = GC.AllocateUninitializedArray<byte>((int)size);
+                Array.Copy(memory, 0, newArr, 0, Math.Min(size, Size));
+                memory = newArr;
+            }
             return Result.Success;
         }
 

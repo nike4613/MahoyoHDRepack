@@ -45,6 +45,20 @@ namespace MahoyoHDRepack.Tests
             AssertStorageEqual(decompressed.AsStorage(), actualDecompressed);
         }
 
+        [Theory]
+        [MemberData(nameof(GetTestDatasets), "*.de", "")]
+        public void TestNopLenZuEncoder(string file, IFile decompressed, IFile unused)
+        {
+            _ = file;
+            _ = unused;
+
+            using var memStor = new MemoryStorage();
+            var decompStorage = decompressed.AsStorage();
+            LenZuCompressorFile.CompressTo(decompStorage, memStor).ThrowIfFailure();
+            var reDecomp = LenZuCompressorFile.ReadCompressed(memStor, assertChecksum: false);
+            AssertStorageEqual(decompStorage, reDecomp);
+        }
+
         private void AssertStorageEqual(IStorage expect, IStorage actual)
         {
             expect.GetSize(out var expectSize).ThrowIfFailure();
@@ -79,7 +93,7 @@ namespace MahoyoHDRepack.Tests
                         {
                             for (var i = lowBound; i < highBound; i += 8)
                             {
-                                var dataSpan = data.Slice(i, int.Min(i + 8, data.Length));
+                                var dataSpan = data.Slice(i, int.Min(8, data.Length));
 #pragma warning disable CS8500 // This takes the address of, gets the size of, or declares a pointer to a managed type
                                 var hexStr = string.Create(dataSpan.Length * 3, (nint)(&dataSpan), static (span, state) =>
                                 {
@@ -89,8 +103,8 @@ namespace MahoyoHDRepack.Tests
                                         span[(i * 3) + 0] = ' ';
                                         var lo = data[i] & 0xf;
                                         var hi = data[i] >> 4;
-                                        span[(i * 3) + 1] = (char)('0' + lo + (lo >= 10 ? 'a' - '0' + 10 : 0));
-                                        span[(i * 3) + 2] = (char)('0' + hi + (hi >= 10 ? 'a' - '0' + 10 : 0));
+                                        span[(i * 3) + 1] = (char)('0' + lo + (lo >= 10 ? 'a' - '0' - 10 : 0));
+                                        span[(i * 3) + 2] = (char)('0' + hi + (hi >= 10 ? 'a' - '0' - 10 : 0));
                                     }
                                 });
 #pragma warning restore CS8500 // This takes the address of, gets the size of, or declares a pointer to a managed type

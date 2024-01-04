@@ -148,7 +148,7 @@ namespace MahoyoHDRepack
             }
         }
 
-        private static byte[] DecompressFile(ReadOnlySpan<byte> compressedFile)
+        private static byte[] DecompressFile(ReadOnlySpan<byte> compressedFile, bool assertChecksum)
         {
             Helpers.DAssert(compressedFile.Slice(0, HeaderSize).SequenceEqual(ExpectHeader));
 
@@ -178,22 +178,28 @@ namespace MahoyoHDRepack
                 resultData = resultData.AsSpan(0, finalSize).ToArray();
             }
 
-            var computedChecksum = ComputeChecksum(resultData);
-            if (checksum != computedChecksum)
+            if (assertChecksum)
             {
-                ThrowHelper.ThrowInvalidDataException($"Checksum did not match (expected {checksum:x16}, got {computedChecksum:x16}");
+                var computedChecksum = ComputeChecksum(resultData);
+                if (checksum != computedChecksum)
+                {
+                    ThrowHelper.ThrowInvalidDataException($"Checksum did not match (expected {checksum:x16}, got {computedChecksum:x16})");
+                }
             }
 
             return resultData;
         }
 
         private static ulong ComputeChecksum(ReadOnlySpan<byte> data)
+            => ComputeChecksumWithSeed(0, 0, data);
+
+        private static ulong ComputeChecksumWithSeed(ulong seed, int iOffset, ReadOnlySpan<byte> data)
         {
-            ReadOnlySpan<int> lut = [0xe9, 0x115, 0x137, 0x1b1];
-            ulong checksum = 0;
+            ReadOnlySpan<int> ChecksumLut = [0xe9, 0x115, 0x137, 0x1b1];
+            var checksum = seed;
             for (var i = 0; i < data.Length; i++)
             {
-                checksum = (checksum + data[i]) * (ulong)lut[i & 3];
+                checksum = (checksum + data[i]) * (ulong)ChecksumLut[(i + iOffset) & 3];
             }
             return checksum;
         }

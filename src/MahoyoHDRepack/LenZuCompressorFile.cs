@@ -14,14 +14,14 @@ namespace MahoyoHDRepack
             => "LenZuCompressor\0"u8 +
                "1\0\0\00\0\0\0\0\0\0\0\0\0\0\0"u8;
 
-        public static IStorage ReadCompressed(IStorage compressed)
+        public static IStorage ReadCompressed(IStorage compressed, bool assertChecksum = true)
         {
             using UniqueRef<IStorage> result = default;
-            ReadCompressed(ref result.Ref, compressed).ThrowIfFailure();
+            ReadCompressed(ref result.Ref, compressed, assertChecksum).ThrowIfFailure();
             return result.Release();
         }
 
-        public static unsafe Result ReadCompressed(ref UniqueRef<IStorage> uncompressed, IStorage compressedStorage)
+        public static unsafe Result ReadCompressed(ref UniqueRef<IStorage> uncompressed, IStorage compressedStorage, bool assertChecksum = true)
         {
             var result = compressedStorage.GetSize(out var size);
             if (result.IsFailure()) return result.Miss();
@@ -70,7 +70,7 @@ namespace MahoyoHDRepack
                 }
             }
 #else
-            var decompressedData = DecompressFile(compressedData);
+            var decompressedData = DecompressFile(compressedData, assertChecksum);
 #endif
 
             uncompressed.Reset(MemoryStorage.Adopt(decompressedData));

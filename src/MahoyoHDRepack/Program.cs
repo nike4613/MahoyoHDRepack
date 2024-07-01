@@ -75,7 +75,7 @@ void ExecWithRootFs(InvocationContext context, Action<IFileSystem> action)
         using var xciHandle = File.OpenHandle(xciFileInfo.FullName, FileMode.Open, FileAccess.Read, FileShare.Read, FileOptions.RandomAccess);
         using var xciStorage = new RandomAccessStorage(xciHandle);
 
-        using var romfs = XciHelpers.MountXci(xciStorage, vfs);
+        using var romfs = XciHelpers.MountXci(xciStorage, vfs, xciFileInfo.Name);
 
         action(romfs);
     }

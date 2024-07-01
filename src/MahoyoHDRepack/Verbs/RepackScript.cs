@@ -34,7 +34,7 @@ internal static class RepackScript
             outDir.Delete(true);
         }
 
-        using var rawRomfs = new SharedRef<IFileSystem>(XciHelpers.MountXci(xciStorage, vfs));
+        using var rawRomfs = new SharedRef<IFileSystem>(XciHelpers.MountXci(xciStorage, vfs, xciFile.Name));
         using var outRomfs = new SharedRef<IFileSystem>(new LocalFileSystem(outDir.FullName));
         using var romfs = new WriteOverlayFileSystem(rawRomfs, outRomfs);
 

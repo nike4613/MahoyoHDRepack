@@ -26,7 +26,7 @@ internal static class ExtractScript
         using var xciHandle = File.OpenHandle(xciFile.FullName, FileMode.Open, FileAccess.Read, FileShare.Read, FileOptions.RandomAccess);
         using var xciStorage = new RandomAccessStorage(xciHandle);
 
-        var romfs = XciHelpers.MountXci(xciStorage, vfs);
+        var romfs = XciHelpers.MountXci(xciStorage, vfs, xciFile.Name);
 
         using var uniqScriptTextFile = new UniqueRef<IFile>();
         romfs.OpenFile(ref uniqScriptTextFile.Ref, "/script_text.mrg".ToU8Span(), LibHac.Fs.OpenMode.Read).ThrowIfFailure();

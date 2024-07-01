@@ -22,7 +22,7 @@ internal static class UnpackHD
         using var xciHandle = File.OpenHandle(xciFile.FullName, FileMode.Open, FileAccess.Read, FileShare.Read, FileOptions.RandomAccess);
         using var xciStorage = new RandomAccessStorage(xciHandle);
 
-        var romfs = XciHelpers.MountXci(xciStorage, vfs);
+        var romfs = XciHelpers.MountXci(xciStorage, vfs, xciFile.Name);
 
         // we've now mounted the ROMFS and have access to the files inside
 

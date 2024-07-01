@@ -34,7 +34,7 @@ namespace MahoyoHDRepack
             }
         }
 
-        public static unsafe Result ReadCompressed(ref UniqueRef<IStorage> uncompressed, IStorage compressedStorage)
+        public static unsafe Result ReadCompressed(ref UniqueRef<IStorage> uncompressed, IStorage compressedStorage, bool invert = true)
         {
             var result = compressedStorage.GetSize(out var size);
             if (result.IsFailure()) return result.Miss();
@@ -51,21 +51,24 @@ namespace MahoyoHDRepack
             result = compressedStorage.Read(8, compressed);
             if (result.IsFailure()) return result.Miss();
 
-            uncompressed.Reset(MemoryStorage.Adopt(Decompress(header.UncompressedSize, compressed)));
+            uncompressed.Reset(MemoryStorage.Adopt(Decompress(header.UncompressedSize, compressed, invert)));
             return Result.Success;
         }
 
         // based on https://github.com/Hintay/PS-HuneX_Tools/blob/master/Specifications/mzp_format.md
         // and https://github.com/Hintay/PS-HuneX_Tools/blob/master/tools/mzx/decomp_mzx0.py
-        private static byte[] Decompress(uint finalSize, ReadOnlySpan<byte> compressedData)
+        private static byte[] Decompress(uint finalSize, ReadOnlySpan<byte> compressedData, bool invert)
         {
             var decompressedBytes = new byte[(finalSize + 1) & ~1]; // possibly overallocate a byte, and get 1 byte of garbage
             var decompressed = MemoryMarshal.Cast<byte, ushort>(decompressedBytes);
             var outPos = 0;
 
+            var resetValue = invert ? ushort.MaxValue : (ushort)0;
+
             var ringbuf = new ushort[64];
+            ringbuf.AsSpan().Fill(resetValue);
             var ringbufPos = 0;
-            ushort last = 0;
+            var last = resetValue;
 
             var count = 0;
 
@@ -74,7 +77,7 @@ namespace MahoyoHDRepack
                 if (count <= 0)
                 {
                     count = 0x1000;
-                    last = 0;
+                    last = resetValue;
                 }
 
                 var b = compressedData[i++];
@@ -92,10 +95,10 @@ namespace MahoyoHDRepack
                         }
                         break;
                     case 1: // backref
-                        var k = compressedData[i++] + 1;
+                        var backrefDistanceWords = compressedData[i++] + 1;
                         for (var j = 0; j < len + 1 && outPos < decompressed.Length; j++)
                         {
-                            decompressed[outPos] = last = decompressed[outPos - k];
+                            decompressed[outPos] = last = decompressed[outPos - backrefDistanceWords];
                             outPos++;
                         }
                         break;
@@ -106,7 +109,10 @@ namespace MahoyoHDRepack
                     default:
                         for (var j = 0; j < len + 1 && outPos < decompressed.Length && i < compressedData.Length; j++)
                         {
-                            ringbuf[ringbufPos] = last = compressedData.Length - i < 2 ? compressedData[i] : MemoryMarshal.Read<ushort>(compressedData.Slice(i));
+                            var data = compressedData.Length - i < 2
+                                ? compressedData[i]
+                                : MemoryMarshal.Read<ushort>(compressedData.Slice(i));
+                            ringbuf[ringbufPos] = last = (ushort)(data ^ resetValue);
                             i += 2;
                             decompressed[outPos++] = last;
 

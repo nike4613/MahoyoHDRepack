@@ -15,6 +15,11 @@ namespace MahoyoHDRepack.Verbs;
 
 internal static class ExtractAll
 {
+    private const string ResetLineStr = "\e[2K";
+    private const string ClearLineToEol = "\e[0K";
+    private const string SaveCursorStr = "\e7";
+    private const string RestoreCursorStr = "\e8";
+
     public static void Run(
         IFileSystem rootFs,
         DirectoryInfo outPath,
@@ -26,8 +31,13 @@ internal static class ExtractAll
         _ = Directory.CreateDirectory(outPath.FullName);
         using var targetFs = new LocalFileSystem(outPath.FullName);
 
+        // initialize console stuff
+        Console.Write("depth " + SaveCursorStr);
+
         var targetPath = GetRootPath();
         RecursiveExtractAll(rootFs, targetPath, targetFs, targetPath, noDecompress, noArchive, doNotProcess);
+
+        Console.WriteLine(ResetLineStr + "\rDone!");
     }
 
     private static Path GetRootPath()
@@ -105,6 +115,9 @@ internal static class ExtractAll
             result.Initialize(path).ThrowIfFailure();
             return result;
         }
+
+        // Add dot to depth display
+        Console.WriteLine($"{RestoreCursorStr}. {SaveCursorStr}");
 
         var dirQueue = new Queue<(Path.Stored src, Path.Stored dst)>();
         dirQueue.Enqueue((ToStored(rootFsPath), ToStored(targetFsPath)));
@@ -224,7 +237,7 @@ internal static class ExtractAll
                                 }
                             }
 
-                            Console.Write(Encoding.UTF8.GetString(dstPath.AsSpan()) + "                                                         \r");
+                            Console.Write(ResetLineStr + $"{enumerated:D10} " + Encoding.UTF8.GetString(dstPath.AsSpan()) + "\r");
 
                             // storageToCopy now contains the IStorage to copy into the target fs
                             storageToCopy.GetSize(out var totalSize).ThrowIfFailure();
@@ -246,6 +259,9 @@ internal static class ExtractAll
 
             ArrayPool<DirectoryEntry>.Shared.Return(entryBuffer);
         }
+
+        // Clear dot from depth display
+        Console.WriteLine($"{RestoreCursorStr}\b\b{ClearLineToEol}{SaveCursorStr}");
     }
 }
 

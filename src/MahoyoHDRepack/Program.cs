@@ -166,6 +166,30 @@ var noArchive = new Option<bool>("--no-arc", "Do not treat archives as directori
 }
 
 {
+    var replacementText = new Option<FileInfo>(
+        new[] { "--replacement-text", "-r" }, "Replacement text")
+    {
+        IsRequired = true,
+        Arity = ArgumentArity.ExactlyOne
+    };
+
+    var cmd = new Command("repack-script-pc")
+    {
+        xciFile, ryuBasePath, gameDir, outDir, replacementText
+    };
+
+    cmd.SetHandler(Exec);
+    rootCmd.Add(cmd);
+
+    void Exec(InvocationContext context) => ExecWithRootFs(context, rootfs =>
+    {
+        RepackScriptPc.Run(rootfs,
+            context.ParseResult.GetValueForOption(replacementText)!,
+            context.ParseResult.GetValueForOption(outDir)!);
+    });
+}
+
+{
     var cmd = new Command("unpack-hd")
     {
         xciFile,

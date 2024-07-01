@@ -1,5 +1,9 @@
-﻿using System;
+﻿
+#define USE_DECOMP
+
+using System;
 using System.Linq;
+using System.Runtime.InteropServices;
 using LibHac;
 using LibHac.Common;
 using LibHac.Fs;

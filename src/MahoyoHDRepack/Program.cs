@@ -23,6 +23,12 @@ var xciFile = new Option<FileInfo>(
     IsRequired = false,
 };
 
+var invertMzx = new Option<bool>(
+    ["--invert-mzx", "-m"], "Use MZX decompressor \"invert\" mode")
+{
+    IsRequired = false,
+};
+
 var gameDir = new Option<DirectoryInfo>(
     ["--game-dir", "-d"], "Game directory")
 {
@@ -97,7 +103,7 @@ var noArchive = new Option<bool>("--no-arc", "Do not treat archives as directori
 
     var cmd = new Command("extract", "Extracts a single file from the RomFS.")
     {
-        xciFile, path, outLoc, raw, noArchive, gameDir
+        xciFile, path, outLoc, raw, noArchive, gameDir, invertMzx
     };
 
     cmd.SetHandler(Exec);
@@ -107,7 +113,8 @@ var noArchive = new Option<bool>("--no-arc", "Do not treat archives as directori
     {
         ExtractFile.Run(rootfs,
             context.ParseResult.GetValueForArgument(path), context.ParseResult.GetValueForArgument(outLoc),
-            context.ParseResult.GetValueForOption(raw), context.ParseResult.GetValueForOption(noArchive));
+            context.ParseResult.GetValueForOption(raw), context.ParseResult.GetValueForOption(noArchive),
+            context.ParseResult.GetValueForOption(invertMzx));
     });
 }
 
@@ -116,7 +123,7 @@ var noArchive = new Option<bool>("--no-arc", "Do not treat archives as directori
 
     var cmd = new Command("extract-all", "Extracts the entire virtual filesystem to a target directory")
     {
-        xciFile, targetDir, raw, noArchive, gameDir, doNotProcessKinds,
+        xciFile, targetDir, raw, noArchive, gameDir, doNotProcessKinds, invertMzx,
     };
 
     cmd.SetHandler(Exec);
@@ -128,18 +135,19 @@ var noArchive = new Option<bool>("--no-arc", "Do not treat archives as directori
             context.ParseResult.GetValueForArgument(targetDir),
             context.ParseResult.GetValueForOption(raw),
             context.ParseResult.GetValueForOption(noArchive),
-            context.ParseResult.GetValueForOption(doNotProcessKinds) ?? Array.Empty<KnownFileTypes>());
+            context.ParseResult.GetValueForOption(doNotProcessKinds) ?? Array.Empty<KnownFileTypes>(),
+            context.ParseResult.GetValueForOption(invertMzx));
     });
 }
 
 {
     var cmd = new Command("extract-script")
     {
-        xciFile, language, outFile
+        xciFile, language, outFile, invertMzx
     };
 
     var exec = ExtractScript.Run;
-    cmd.SetHandler(exec, ryuBasePath, xciFile, language, outFile);
+    cmd.SetHandler(exec, ryuBasePath, xciFile, language, outFile, invertMzx);
     rootCmd.Add(cmd);
 }
 
@@ -156,11 +164,11 @@ var noArchive = new Option<bool>("--no-arc", "Do not treat archives as directori
 
     var cmd = new Command("repack-script")
     {
-        xciFile, language, outDir, csv, autoReplaceAboveScore
+        xciFile, language, outDir, csv, autoReplaceAboveScore, invertMzx
     };
 
     var exec = RepackScript.Run;
-    cmd.SetHandler(exec, ryuBasePath, xciFile, language, csv, autoReplaceAboveScore, outDir);
+    cmd.SetHandler(exec, ryuBasePath, xciFile, language, csv, autoReplaceAboveScore, outDir, invertMzx);
     rootCmd.Add(cmd);
 }
 

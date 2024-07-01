@@ -18,9 +18,11 @@ internal static class RepackScript
         GameLanguage secondLang,
         FileInfo csvFile,
         int replaceAboveScore,
-        DirectoryInfo outDir
+        DirectoryInfo outDir,
+        bool invertMzx
     )
     {
+        MzxFile.DefaultInvert = invertMzx;
         Common.InitRyujinx(ryuBase, out var horizon, out var vfs);
 
         // attempt to mount the XCI file

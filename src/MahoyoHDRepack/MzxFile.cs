@@ -1,10 +1,7 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Text;
-using System.Threading.Tasks;
 using LibHac;
 using LibHac.Common;
 using LibHac.Fs;
@@ -13,10 +10,12 @@ namespace MahoyoHDRepack
 {
     internal class MzxFile
     {
+        public static bool DefaultInvert;
+
         public static IStorage ReadCompressed(IStorage compressed)
         {
             using UniqueRef<IStorage> result = default;
-            ReadCompressed(ref result.Ref, compressed).ThrowIfFailure();
+            ReadCompressed(ref result.Ref, compressed, DefaultInvert).ThrowIfFailure();
             return result.Release();
         }
 
@@ -34,7 +33,7 @@ namespace MahoyoHDRepack
             }
         }
 
-        public static unsafe Result ReadCompressed(ref UniqueRef<IStorage> uncompressed, IStorage compressedStorage, bool invert = true)
+        public static unsafe Result ReadCompressed(ref UniqueRef<IStorage> uncompressed, IStorage compressedStorage, bool invert)
         {
             var result = compressedStorage.GetSize(out var size);
             if (result.IsFailure()) return result.Miss();

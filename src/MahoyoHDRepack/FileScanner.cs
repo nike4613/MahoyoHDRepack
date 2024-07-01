@@ -36,7 +36,7 @@ internal static class FileScanner
     private static bool Matches(long read, ReadOnlySpan<byte> magic, ReadOnlySpan<byte> test)
         => read >= test.Length && magic.StartsWith(test);
 
-    public static IFile TryGetDecompressedFile(IFile file)
+    public static IFile TryGetDecompressedFile(IFile file, bool invertMzx = false)
     {
         var type = ProbeForFileType(file);
         return type switch

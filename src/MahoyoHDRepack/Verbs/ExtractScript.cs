@@ -14,9 +14,12 @@ internal static class ExtractScript
         string? ryuBase,
         FileInfo xciFile,
         GameLanguage secondLang,
-        FileInfo outFile
+        FileInfo outFile,
+        bool invertMzx
     )
     {
+        MzxFile.DefaultInvert = invertMzx;
+
         Common.InitRyujinx(ryuBase, out var horizon, out var vfs);
 
         // attempt to mount the XCI file

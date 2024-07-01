@@ -30,7 +30,7 @@
 
   <ItemGroup>
     <ProjectReference Include="$(MMExternalPath)Ryujinx\src\Ryujinx.HLE\Ryujinx.HLE.csproj" />
-    <ProjectReference Include="$(MMExternalPath)Ryujinx\src\Ryujinx.Ui.Common\Ryujinx.Ui.Common.csproj" />
+    <ProjectReference Include="$(MMExternalPath)Ryujinx\src\Ryujinx.UI.Common\Ryujinx.UI.Common.csproj" />
     <ProjectReference Include="$(MMExternalPath)Ryujinx\src\Ryujinx.Common\Ryujinx.Common.csproj" />
   </ItemGroup>
   

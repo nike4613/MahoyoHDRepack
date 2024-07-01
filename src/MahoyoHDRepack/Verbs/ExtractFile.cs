@@ -17,9 +17,12 @@ internal static class ExtractFile
         string arcPath,
         string outLoc,
         bool raw,
-        bool noArc
+        bool noArc,
+        bool invertMzx
     )
     {
+        MzxFile.DefaultInvert = invertMzx;
+
         // TODO: support extracting full directories
 
         using var path = new FsPath();

@@ -25,9 +25,12 @@ internal static class ExtractAll
         DirectoryInfo outPath,
         bool noDecompress,
         bool noArchive,
-        KnownFileTypes[] doNotProcess
+        KnownFileTypes[] doNotProcess,
+        bool invertMzx
     )
     {
+        MzxFile.DefaultInvert = invertMzx;
+
         _ = Directory.CreateDirectory(outPath.FullName);
         using var targetFs = new LocalFileSystem(outPath.FullName);
 

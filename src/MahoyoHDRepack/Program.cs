@@ -3,7 +3,6 @@ using System.CommandLine;
 using System.CommandLine.Invocation;
 using System.CommandLine.IO;
 using System.IO;
-using System.Security.Principal;
 using LibHac.Fs.Fsa;
 using LibHac.FsSystem;
 using MahoyoHDRepack;
@@ -19,37 +18,37 @@ var ryuBasePath = new Option<string?>(
 };
 
 var xciFile = new Option<FileInfo>(
-    new[] { "--xci", "-x" }, "Game XCI file")
+    ["--xci", "-x"], "Game XCI file")
 {
     IsRequired = false,
 };
 
 var gameDir = new Option<DirectoryInfo>(
-    new[] { "--game-dir", "-d" }, "Game directory")
+    ["--game-dir", "-d"], "Game directory")
 {
     IsRequired = false,
 };
 
 var language = new Option<GameLanguage>(
-    new[] { "--lang", "-l" }, "Language to operate on")
+    ["--lang", "-l"], "Language to operate on")
 {
     IsRequired = true,
 };
 
 var outFile = new Option<FileInfo>(
-    new[] { "--out", "-o" }, "Output file")
+    ["--out", "-o"], "Output file")
 {
     IsRequired = true,
 };
 
 var outDir = new Option<DirectoryInfo>(
-    new[] { "--out", "-o" }, "Output directory")
+    ["--out", "-o"], "Output directory")
 {
     IsRequired = true,
 };
 
 var doNotProcessKinds = new Option<KnownFileTypes[]>(
-    new[] { "--no-process", "-e" }, "File types to not process")
+    ["--no-process", "-e"], "File types to not process")
 {
 
 };
@@ -146,14 +145,14 @@ var noArchive = new Option<bool>("--no-arc", "Do not treat archives as directori
 
 {
     var csv = new Option<FileInfo>(
-        new[] { "--csv" }, "Script CSV")
+        ["--csv"], "Script CSV")
     {
         IsRequired = true,
         Arity = ArgumentArity.ExactlyOne
     };
 
     var autoReplaceAboveScore = new Option<int>(
-        new[] { "--replace-above" }, () => 95, "Fuzzy match score to accept as a match");
+        ["--replace-above"], () => 95, "Fuzzy match score to accept as a match");
 
     var cmd = new Command("repack-script")
     {
@@ -167,7 +166,7 @@ var noArchive = new Option<bool>("--no-arc", "Do not treat archives as directori
 
 {
     var replacementText = new Option<FileInfo>(
-        new[] { "--replacement-text", "-r" }, "Replacement text")
+        ["--replacement-text", "-r"], "Replacement text")
     {
         IsRequired = true,
         Arity = ArgumentArity.ExactlyOne

@@ -46,7 +46,7 @@ namespace MahoyoHDRepack.ScriptText
                 for (var i = 0; i < lines.Length; i++)
                 {
                     entry = dataOffs;
-                    MemoryMarshal.Write(entrySpan, ref entry);
+                    MemoryMarshal.Write(entrySpan, in entry);
                     // write the offset of the data to the offsets file
                     result = offsetsFile.Write(i * EntrySize, entrySpan, WriteOption.None);
                     if (result.IsFailure()) return result.Miss();
@@ -70,7 +70,7 @@ namespace MahoyoHDRepack.ScriptText
 
                 // finally, we write a -1
                 entry = uint.MaxValue;
-                MemoryMarshal.Write(entrySpan, ref entry);
+                MemoryMarshal.Write(entrySpan, in entry);
                 result = offsetsFile.Write(lines.Length * EntrySize, entrySpan, WriteOption.None);
                 if (result.IsFailure()) return result.Miss();
             }

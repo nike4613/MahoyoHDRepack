@@ -15,7 +15,8 @@ namespace MahoyoHDRepack.Verbs
         )
         {
             using var sharedGameFs = new SharedRef<IFileSystem>(gameFs);
-            using var outRomfs = new SharedRef<IFileSystem>(new LocalFileSystem(outDir.FullName));
+            using var outRomfsLocalFs = new LocalFileSystem(outDir.FullName);
+            using var outRomfs = new SharedRef<IFileSystem>(outRomfsLocalFs);
             using var romfs = new WriteOverlayFileSystem(sharedGameFs, outRomfs);
 
             using var uniqScriptTextFile = new UniqueRef<IFile>();
@@ -35,7 +36,7 @@ namespace MahoyoHDRepack.Verbs
             scriptTextFile.Get.Flush().ThrowIfFailure();
             hfaFs.Get.Flush().ThrowIfFailure();
             uniqScriptTextFile.Get.Flush().ThrowIfFailure();
-            romfs.Flush();
+            romfs.Flush().ThrowIfFailure();
         }
     }
 }

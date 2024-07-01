@@ -1,11 +1,12 @@
-﻿using LibHac.Common;
+﻿using System.Globalization;
+using LibHac.Common;
 using LibHac.Fs;
 using LibHac.Fs.Fsa;
 using LibHac.Tools.Fs;
 using LibHac.Tools.FsSystem;
 using LibHac.Tools.FsSystem.NcaUtils;
 using Ryujinx.HLE.FileSystem;
-using Ryujinx.Ui.App.Common;
+using Ryujinx.UI.App.Common;
 
 namespace MahoyoHDRepack;
 
@@ -41,7 +42,8 @@ public static class XciHelpers
 
         Helpers.Assert(mainNca is not null);
 
-        var (updatePatchNca, _) = ApplicationLibrary.GetGameUpdateData(vfs, mainNca.Header.TitleId.ToString("x16"), programIndex, out _);
+        var (updatePatchNca, _) = ApplicationLibrary.GetGameUpdateData(vfs,
+            mainNca.Header.TitleId.ToString("x16", CultureInfo.InvariantCulture), programIndex, out _);
         if (updatePatchNca is not null)
         {
             patchNca = updatePatchNca;

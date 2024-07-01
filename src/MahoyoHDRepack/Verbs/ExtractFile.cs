@@ -23,7 +23,7 @@ internal static class ExtractFile
         // TODO: support extracting full directories
 
         using var path = new FsPath();
-        path.InitializeWithNormalization(arcPath.ToU8Span()).ThrowIfFailure();
+        path.InitializeWithNormalization(arcPath.ToU8Span().Value).ThrowIfFailure();
 
         using var uniqFile = OpenFile(rootFs, path, raw, noArc);
 
@@ -45,6 +45,7 @@ internal static class ExtractFile
     private static UniqueRef<IFile> OpenFile(IFileSystem romfs, in FsPath path, bool raw, bool noArchive)
     {
         Utils.Normalize(path, out var normalized).ThrowIfFailure();
+        using var _ = normalized;
         using var uniqFile = new UniqueRef<IFile>();
         if (noArchive)
         {
@@ -76,7 +77,7 @@ internal static class ExtractFile
         scoped FsPath normalized;
 
         // walk up the path, probing for an extant file
-        scoped var inArcPath = new FsPath();
+        using scoped var inArcPath = new FsPath();
         inArcPath.InitializeAsEmpty().ThrowIfFailure();
 
         while (true)
@@ -90,10 +91,12 @@ internal static class ExtractFile
 
             // we also want to try for an MRG filesystem because that's funky
             result = MrgFileSystem.Read(fs, path, out var mrgfs);
+            using var __ = mrgfs;
             if (result.IsSuccess())
             {
                 Helpers.Assert(mrgfs is not null);
                 Utils.Normalize(inArcPath, out normalized).ThrowIfFailure();
+                using var _ = normalized;
                 // we have our archive fs, pass that forward
                 return OpenFileInArchive(ref outFile, mrgfs, normalized);
             }
@@ -120,7 +123,7 @@ internal static class ExtractFile
                     var mzpFs = uniqFs.Release(); // we have to release it because we need it to persist past the end of the invocation due to the scheme here
                     // oh well!
                     Utils.Normalize(inArcPath, out normalized).ThrowIfFailure();
-                    return OpenFileInArchive(ref outFile, mzpFs, normalized);
+                    using (normalized) return OpenFileInArchive(ref outFile, mzpFs, normalized);
                 }
 
             case KnownFileTypes.Hfa:
@@ -129,12 +132,13 @@ internal static class ExtractFile
                     HfaFileSystem.Read(ref uniqFs.Ref, uniqFile.Release().AsStorage()).ThrowIfFailure();
                     var hfaFs = uniqFs.Release();
                     Utils.Normalize(inArcPath, out normalized).ThrowIfFailure();
-                    return OpenFileInArchive(ref outFile, hfaFs, normalized);
+                    using (normalized) return OpenFileInArchive(ref outFile, hfaFs, normalized);
                 }
 
             case KnownFileTypes.Unknown:
             case KnownFileTypes.Mzx:
             case KnownFileTypes.Nxx:
+            case KnownFileTypes.LenZuCompressor:
             default:
                 return ResultFs.FileNotFound.Miss();
         }

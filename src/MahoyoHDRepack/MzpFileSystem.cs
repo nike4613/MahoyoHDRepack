@@ -66,14 +66,20 @@ public sealed class MzpFileSystem : CopyOnWriteFileSystem
 
     private readonly CowEntry[] entries;
 
-    private MzpFileSystem(IStorage storage, CowEntry[] entries) : base(storage)
+    private MzpFileSystem(SharedRef<IStorage> storageRef, IStorage storage, CowEntry[] entries) : base(storageRef, storage)
     {
         this.entries = entries;
     }
 
     public static Result Read(ref UniqueRef<IFileSystem> fs, IStorage storage)
-        => Read(ref Unsafe.As<UniqueRef<IFileSystem>, UniqueRef<MzpFileSystem>>(ref fs), storage);
-    public static Result Read(ref UniqueRef<MzpFileSystem> mzpFs, IStorage storage)
+        => ReadCore(ref Unsafe.As<UniqueRef<IFileSystem>, UniqueRef<MzpFileSystem>>(ref fs), default, storage);
+    public static Result Read(ref UniqueRef<IFileSystem> fs, SharedRef<IStorage> storage)
+        => ReadCore(ref Unsafe.As<UniqueRef<IFileSystem>, UniqueRef<MzpFileSystem>>(ref fs), storage, storage.Get);
+    public static Result Read(ref UniqueRef<MzpFileSystem> fs, IStorage storage)
+        => ReadCore(ref fs, default, storage);
+    public static Result Read(ref UniqueRef<MzpFileSystem> fs, SharedRef<IStorage> storage)
+        => ReadCore(ref fs, storage, storage.Get);
+    private static Result ReadCore(ref UniqueRef<MzpFileSystem> mzpFs, SharedRef<IStorage> storageRef, IStorage storage)
     {
         ArgumentNullException.ThrowIfNull(storage);
 
@@ -115,7 +121,7 @@ public sealed class MzpFileSystem : CopyOnWriteFileSystem
             entries[i] = mzpEntry.ToEntry((uint)dataOffset);
         }
 
-        mzpFs.Reset(new MzpFileSystem(storage, entries));
+        mzpFs.Reset(new MzpFileSystem(storageRef, storage, entries));
         return Result.Success;
     }
 

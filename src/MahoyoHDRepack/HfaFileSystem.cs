@@ -73,7 +73,7 @@ namespace MahoyoHDRepack
             }
         }
 
-        private HfaFileSystem(IStorage storage, Entry[] entries) : base(storage)
+        private HfaFileSystem(SharedRef<IStorage> storageRef, IStorage storage, Entry[] entries) : base(storageRef, storage)
         {
             this.entries = entries;
 
@@ -89,9 +89,14 @@ namespace MahoyoHDRepack
         }
 
         public static Result Read(ref UniqueRef<IFileSystem> fs, IStorage storage)
-            => Read(ref Unsafe.As<UniqueRef<IFileSystem>, UniqueRef<HfaFileSystem>>(ref fs), storage);
-
-        public static Result Read(ref UniqueRef<HfaFileSystem> hfaFs, IStorage storage)
+            => ReadCore(ref Unsafe.As<UniqueRef<IFileSystem>, UniqueRef<HfaFileSystem>>(ref fs), default, storage);
+        public static Result Read(ref UniqueRef<IFileSystem> fs, SharedRef<IStorage> storage)
+            => ReadCore(ref Unsafe.As<UniqueRef<IFileSystem>, UniqueRef<HfaFileSystem>>(ref fs), storage, storage.Get);
+        public static Result Read(ref UniqueRef<HfaFileSystem> fs, IStorage storage)
+            => ReadCore(ref fs, default, storage);
+        public static Result Read(ref UniqueRef<HfaFileSystem> fs, SharedRef<IStorage> storage)
+            => ReadCore(ref fs, storage, storage.Get);
+        private static Result ReadCore(ref UniqueRef<HfaFileSystem> hfaFs, SharedRef<IStorage> storageRef, IStorage storage)
         {
             ArgumentNullException.ThrowIfNull(storage);
 
@@ -133,7 +138,7 @@ namespace MahoyoHDRepack
                 entries[i] = hfaEntry.ToEntry(dataOffset);
             }
 
-            hfaFs.Reset(new HfaFileSystem(storage, entries));
+            hfaFs.Reset(new HfaFileSystem(storageRef, storage, entries));
             return Result.Success;
         }
 

@@ -59,6 +59,12 @@ var doNotProcessKinds = new Option<KnownFileTypes[]>(
 
 };
 
+var inParallel = new Option<bool>(
+    ["--parallel", "-p"], "Extract in parallel")
+{
+
+};
+
 rootCmd.AddGlobalOption(ryuBasePath);
 
 void ExecWithRootFs(InvocationContext context, Action<IFileSystem> action)
@@ -123,7 +129,7 @@ var noArchive = new Option<bool>("--no-arc", "Do not treat archives as directori
 
     var cmd = new Command("extract-all", "Extracts the entire virtual filesystem to a target directory")
     {
-        xciFile, targetDir, raw, noArchive, gameDir, doNotProcessKinds, invertMzx,
+        xciFile, targetDir, raw, noArchive, gameDir, doNotProcessKinds, invertMzx, inParallel,
     };
 
     cmd.SetHandler(Exec);
@@ -136,7 +142,8 @@ var noArchive = new Option<bool>("--no-arc", "Do not treat archives as directori
             context.ParseResult.GetValueForOption(raw),
             context.ParseResult.GetValueForOption(noArchive),
             context.ParseResult.GetValueForOption(doNotProcessKinds) ?? Array.Empty<KnownFileTypes>(),
-            context.ParseResult.GetValueForOption(invertMzx));
+            context.ParseResult.GetValueForOption(invertMzx),
+            context.ParseResult.GetValueForOption(inParallel));
     });
 }
 

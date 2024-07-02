@@ -61,14 +61,16 @@ namespace MahoyoHDRepack
             }
         }
 
+        private readonly SharedRef<IFileSystem> sharedFsRef;
         private readonly IFile mrg;
         private readonly IFile hed;
         private readonly IFile? nam;
         private readonly ReadOnlyMemory<HedEntry> files;
         private readonly ReadOnlyMemory<Name> names;
 
-        private MrgFileSystem(IFile mrg, IFile hed, IFile? nam, ReadOnlyMemory<HedEntry> files, ReadOnlyMemory<Name> names)
+        private MrgFileSystem(SharedRef<IFileSystem> sharedFsRef, IFile mrg, IFile hed, IFile? nam, ReadOnlyMemory<HedEntry> files, ReadOnlyMemory<Name> names)
         {
+            this.sharedFsRef = sharedFsRef;
             this.mrg = mrg;
             this.hed = hed;
             this.nam = nam;
@@ -81,9 +83,20 @@ namespace MahoyoHDRepack
             mrg.Dispose();
             hed.Dispose();
             nam?.Dispose();
+            sharedFsRef.Destroy();
         }
 
         public static Result Read(IFileSystem fs, in Path path, out MrgFileSystem? mrgFs)
+        {
+            return ReadCore(fs, default, path, out mrgFs);
+        }
+
+        public static Result Read(SharedRef<IFileSystem> fs, in Path path, out MrgFileSystem? mrgFs)
+        {
+            return ReadCore(fs.Get, fs, path, out mrgFs);
+        }
+
+        private static Result ReadCore(IFileSystem fs, SharedRef<IFileSystem> fsSharedRef, in Path path, out MrgFileSystem? mrgFs)
         {
             mrgFs = null;
 
@@ -202,7 +215,7 @@ namespace MahoyoHDRepack
                 names.Span.Sort(hedEntries.Span);
             }
 
-            mrgFs = new(uniqMrgFile.Release(), uniqHedFile.Release(), uniqNamFile.Release(), hedEntries, names);
+            mrgFs = new(SharedRef<IFileSystem>.CreateCopy(fsSharedRef), uniqMrgFile.Release(), uniqHedFile.Release(), uniqNamFile.Release(), hedEntries, names);
             return Result.Success;
         }
 

@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Buffers;
 using LibHac;
+using LibHac.Common;
 using LibHac.Fs;
 using LibHac.Fs.Fsa;
 using LibHac.Tools.FsSystem;
@@ -9,14 +10,16 @@ namespace MahoyoHDRepack;
 
 public abstract class CopyOnWriteFileSystem : IFileSystem
 {
+    private readonly SharedRef<IStorage> storageRef;
     protected readonly IStorage Storage;
     private long storageSize;
 
     protected long StorageSize => storageSize;
 
-    protected CopyOnWriteFileSystem(IStorage storage)
+    protected CopyOnWriteFileSystem(SharedRef<IStorage> storageRef, IStorage storage)
     {
         ArgumentNullException.ThrowIfNull(storage);
+        this.storageRef = SharedRef<IStorage>.CreateCopy(storageRef);
         Storage = storage;
         storage.GetSize(out storageSize).ThrowIfFailure();
     }
@@ -32,6 +35,11 @@ public abstract class CopyOnWriteFileSystem : IFileSystem
         internal FwStorage? Fw;
     }
 
+    public override void Dispose()
+    {
+        storageRef.Destroy();
+        base.Dispose();
+    }
 
     protected IStorage GetStorageForEntry(ref CowEntry entry)
     {

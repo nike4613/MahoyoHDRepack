@@ -8,6 +8,11 @@ namespace MahoyoHDRepack;
 
 public static class Helpers
 {
+    public const string ResetLineStr = "\e[2K";
+    public const string ClearLineToEol = "\e[0K";
+    public const string SaveCursorStr = "\e7";
+    public const string RestoreCursorStr = "\e8";
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool Has<T>(this T @enum, T value) where T : struct, Enum
     {

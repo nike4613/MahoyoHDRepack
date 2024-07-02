@@ -17,7 +17,6 @@ public static class XciHelpers
 {
     public static IFileSystem MountXci(IStorage xciStorage, VirtualFileSystem vfs, string filename, int programIndex = 0)
     {
-        // This is largely copied from https://github.com/Ryujinx/Ryujinx/blob/b994dafe7aa8c49fe8de69b7b81401aaeeed8c59/Ryujinx.Ava/Common/ApplicationHelper.cs#L175
         Nca? mainNca = null;
         Nca? patchNca = null;
 
@@ -38,25 +37,7 @@ public static class XciHelpers
                 pfs = tmp;
             }
 
-            foreach (var entry in pfs.EnumerateEntries("/", "*.nca"))
-            {
-                using var ncaFile = new UniqueRef<IFile>();
-                pfs.OpenFile(ref ncaFile.Ref, entry.FullPath.ToU8Span(), OpenMode.Read).ThrowIfFailure();
-
-                var nca = new Nca(vfs.KeySet, ncaFile.Get.AsStorage());
-                if (nca.Header.ContentType == NcaContentType.Program)
-                {
-                    var dataIndex = Nca.GetSectionIndexFromType(NcaSectionType.Data, NcaContentType.Program);
-                    if (nca.Header.GetFsHeader(dataIndex).IsPatchSection())
-                    {
-                        patchNca = nca;
-                    }
-                    else
-                    {
-                        mainNca = nca;
-                    }
-                }
-            }
+            (mainNca, patchNca, _) = ApplicationLibrary.GetGameData(vfs, pfs, programIndex);
         }
         else if (extension is ".NCA")
         {

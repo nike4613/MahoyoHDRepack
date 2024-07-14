@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
 using LibHac.Common;
@@ -85,5 +86,41 @@ internal static class RepackScriptDeepLuna
 
         // TODO:
 
+        Helpers.Assert(langLines.Length == jpLines.Length);
+        var inserted = 0;
+        var failed = 0;
+        for (var i = 0; i < langLines.Length; i++)
+        {
+            // look up a translation for this line
+            if (deepLunaDb.TryLookupLine(jpLines[i].AsSpan(), i, out var line))
+            {
+                // found a match, insert it
+                // TODO: process ruby text
+                if (line.Translated is not null)
+                {
+                    langLines[i] = line.Translated + "\r\n";
+                }
+
+                inserted++;
+            }
+            else
+            {
+                // did not find a match, print
+                Console.WriteLine($"ERROR: Could not find match for JP line: sha:{Convert.ToHexString(SHA1.HashData(jpLines[i].AsSpan())).ToLowerInvariant()}");
+                Console.WriteLine("-------------------------------------------------------------------------------------------------------");
+                Console.WriteLine(Encoding.UTF8.GetString(jpLines[i].AsSpan()));
+                Console.WriteLine("-------------------------------------------------------------------------------------------------------");
+                Console.WriteLine(langLines[i]);
+                Console.WriteLine("-------------------------------------------------------------------------------------------------------");
+                failed++;
+            }
+        }
+
+        Console.WriteLine($"Script insert completed. Inserted {inserted} lines, failed on {failed} lines.");
+
+        // langLines now contains our language lines
+
+        ScriptLineWriter.WriteLines(mzpFs, secondLang, langLines).ThrowIfFailure();
+        mzpFs.Flush().ThrowIfFailure();
     }
 }

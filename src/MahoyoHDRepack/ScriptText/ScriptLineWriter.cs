@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Buffers;
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
 using LibHac;
@@ -33,7 +34,14 @@ namespace MahoyoHDRepack.ScriptText
             var result = offsetsFile.SetSize(offsetsFileSize);
             if (result.IsFailure()) return result.Miss();
 
-            result = textFile.SetSize(2);
+            // compute final file size AOT
+            long textFileSize = 0;
+            foreach (var str in lines)
+            {
+                textFileSize += Encoding.UTF8.GetByteCount(str);
+            }
+
+            result = textFile.SetSize(textFileSize);
             if (result.IsFailure()) return result.Miss();
 
             Span<byte> entrySpan = stackalloc byte[EntrySize];

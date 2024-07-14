@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Buffers;
+using System.Collections.Immutable;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -38,7 +39,77 @@ namespace MahoyoHDRepack.ScriptText
         {
             Unsafe.SkipInit(out lines);
 
+            ReadLinesAction action = default;
+            var result = ReadLinesCore(fs, lang, ref action);
+            if (result.IsSuccess())
+            {
+                Helpers.Assert(action.Lines is not null);
+                lines = action.Lines;
+            }
+            return result;
+        }
+
+        private struct ReadLinesAction : ILineReadAction
+        {
+            public string[]? Lines;
+
+            public Result OnReadBoundaries(ReadOnlySpan<uint> boundaries)
+            {
+                Lines = new string[boundaries.Length];
+                return Result.Success;
+            }
+            public Result ReadLine(int index, ReadOnlySpan<byte> data)
+            {
+                Helpers.Assert(Lines is not null);
+                Lines[index] = Encoding.UTF8.GetString(data);
+                return Result.Success;
+            }
+        }
+
+        public static Result ReadLinesU8(MzpFileSystem fs, GameLanguage lang, out ImmutableArray<byte>[] lines)
+        {
+            Unsafe.SkipInit(out lines);
+
+            ReadLinesU8Action action = default;
+            var result = ReadLinesCore(fs, lang, ref action);
+            if (result.IsSuccess())
+            {
+                Helpers.Assert(action.Lines is not null);
+                lines = action.Lines;
+            }
+            return result;
+        }
+
+        private struct ReadLinesU8Action : ILineReadAction
+        {
+            public ImmutableArray<byte>[]? Lines;
+
+            public Result OnReadBoundaries(ReadOnlySpan<uint> boundaries)
+            {
+                Lines = new ImmutableArray<byte>[boundaries.Length];
+                return Result.Success;
+            }
+            public Result ReadLine(int index, ReadOnlySpan<byte> data)
+            {
+                Helpers.Assert(Lines is not null);
+                Lines[index] = [.. data];
+                return Result.Success;
+            }
+        }
+
+        private interface ILineReadAction
+        {
+            Result OnReadBoundaries(ReadOnlySpan<uint> boundaries);
+            Result ReadLine(int index, ReadOnlySpan<byte> data);
+        }
+
+        private static Result ReadLinesCore<TLineReader>(MzpFileSystem fs, GameLanguage lang, ref TLineReader lineReader)
+            where TLineReader : ILineReadAction
+        {
             var result = ReadLineBoundaries(fs, lang, out var boundaries);
+            if (result.IsFailure()) return result.Miss();
+
+            result = lineReader.OnReadBoundaries(boundaries.Span);
             if (result.IsFailure()) return result.Miss();
 
             using var lineDataFile = new UniqueRef<IFile>();
@@ -48,8 +119,7 @@ namespace MahoyoHDRepack.ScriptText
             result = lineDataFile.Get.GetSize(out var lineDataSize);
             if (result.IsFailure()) return result.Miss();
 
-            var lineArr = new string[boundaries.Length];
-            for (var i = 0; i < lineArr.Length; i++)
+            for (var i = 0; i < boundaries.Length; i++)
             {
                 var start = boundaries.Span[i];
                 var end = i + 1 < boundaries.Length ? boundaries.Span[i + 1] : lineDataSize;
@@ -62,7 +132,8 @@ namespace MahoyoHDRepack.ScriptText
                     if (result.IsFailure()) return result.Miss();
 
                     var data = buf.AsSpan()[..Math.Min((int)read, len)];
-                    lineArr[i] = Encoding.UTF8.GetString(data);
+                    result = lineReader.ReadLine(i, data);
+                    if (result.IsFailure()) return result.Miss();
                 }
                 finally
                 {
@@ -70,7 +141,6 @@ namespace MahoyoHDRepack.ScriptText
                 }
             }
 
-            lines = lineArr;
             return Result.Success;
         }
 

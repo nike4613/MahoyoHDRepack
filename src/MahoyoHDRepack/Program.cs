@@ -178,6 +178,24 @@ var noArchive = new Option<bool>("--no-arc", "Do not treat archives as directori
     cmd.SetHandler(exec, ryuBasePath, xciFile, language, csv, autoReplaceAboveScore, outDir, invertMzx);
     rootCmd.Add(cmd);
 }
+{
+    var lunaFiles = new Option<string[]>(
+        ["-d", "--luna"], "deepLuna translation files")
+    {
+        IsRequired = true,
+        Arity = ArgumentArity.OneOrMore
+    };
+
+
+    var cmd = new Command("repack-script-deepluna")
+    {
+        xciFile, language, outDir, lunaFiles, invertMzx,
+    };
+
+    var exec = RepackScriptDeepLuna.Run;
+    cmd.SetHandler(exec, ryuBasePath, xciFile, language, lunaFiles, outDir, invertMzx);
+    rootCmd.Add(cmd);
+}
 
 {
     var replacementText = new Option<FileInfo>(

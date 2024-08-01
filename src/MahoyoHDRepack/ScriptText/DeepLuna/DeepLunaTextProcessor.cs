@@ -206,8 +206,6 @@ internal static class DeepLunaTextProcessor
     {
         _ = sb.Clear();
 
-        // TODO: handle shouldCenter and shouldRightAlign
-
         var atState = StringFormatState.None;
 
         static void SetAtFormatState(StringBuilder sb, ref StringFormatState atState, StringFormatState newState)
@@ -243,22 +241,58 @@ internal static class DeepLunaTextProcessor
             }
         }
 
-        foreach (var (fformat, text) in segments)
+        string? nextPreTag = null;
+
+        // TODO: figure out something for shouldCenter
+        // For shouldRightAlign, our strategy is to @b (which puts the text on the right edge of the screen), and just emit the text fully backwards.
+
+        var iterDir = shouldRightAlign ? -1 : 1;
+        for (var i = shouldRightAlign ? segments.Count - 1 : 0;
+            i >= 0 && i < segments.Count;
+            i += iterDir)
         {
+            var (format, text) = segments[i];
+
             if (text.Length == 0) continue;
 
-            var format = fformat;
+            if (shouldRightAlign)
+            {
+                format ^= StringFormatState.Backwards;
+            }
+
+            if (nextPreTag is { } tag)
+            {
+                _ = sb.Append(tag);
+                nextPreTag = null;
+            }
+
             if (format.Has(StringFormatState.SimultaneousMark))
             {
                 format &= ~StringFormatState.SimultaneousMark;
                 // this segment was marked InsertAtT, emit the marker
-                _ = sb.Append("@t");
+                if (!shouldRightAlign)
+                {
+                    _ = sb.Append("@t");
+                }
+                else
+                {
+                    // if we're right-aligning, it should actually be at the *end* of this segment though
+                    nextPreTag += "@t";
+                }
             }
             if (format.Has(StringFormatState.InsertAtK))
             {
                 format &= ~StringFormatState.InsertAtK;
                 // this segment was marked InsertAtK, emit the marker
-                _ = sb.Append("@k");
+                if (!shouldRightAlign)
+                {
+                    _ = sb.Append("@k");
+                }
+                else
+                {
+                    // if we're right-aligning, it should actually be at the *end* of this segment though
+                    nextPreTag += "@k";
+                }
             }
 
             // lets apply @-states, if we can
@@ -305,16 +339,34 @@ internal static class DeepLunaTextProcessor
 
             if (offsetIndex == -1)
             {
-                // no offseting is necessary, we can just append the string to the string builder
-                _ = sb.Append(text);
+                if (!shouldRightAlign)
+                {
+                    // no offseting is necessary, we can just append the string to the string builder
+                    _ = sb.Append(text);
+                }
+                else
+                {
+                    // we need to do a unicode-correct backwards enumeration
+                    for (var j = text.Length - 1; j >= 0; j--)
+                    {
+                        var c = text[j];
+                        // if c is the low surrogate, the immediately prior char must be a high surrogate, which always needs to be appended first
+                        if (char.IsLowSurrogate(c))
+                        {
+                            _ = sb.Append(text[--j]);
+                        }
+                        _ = sb.Append(c);
+                    }
+                }
             }
             else
             {
                 // we need to offset, do that
                 var offset = PrivateUseOffset + (RangeSize * offsetIndex) - FirstModifiedCodepoint;
 
-                foreach (var c in text)
+                for (var j = shouldRightAlign ? text.Length - 1 : 0; j >= 0 && j < text.Length; j += iterDir)
                 {
+                    var c = text[j];
                     if ((int)c is >= FirstModifiedCodepoint and <= LastModifiedCodepoint)
                     {
                         SetAtFormatState(sb, ref atState, fmtAtStates);

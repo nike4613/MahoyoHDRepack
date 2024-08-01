@@ -200,7 +200,7 @@ internal static class DeepLunaParser
                                 }
 
                                 var line = new DeepLunaLine(filename, blockStartLine, lineno, hash, offset,
-                                    translatedBuilder.Length > 0 ? translatedBuilder.ToString() : null,
+                                    translatedBuilder.Length > 0 ? DeepLunaTextProcessor.ConvertDeepLunaText(translatedBuilder.ToString()) : null,
                                     commentBuilder.Length > 0 ? commentBuilder.ToString() : null);
                                 _ = translatedBuilder.Clear();
                                 _ = commentBuilder.Clear();

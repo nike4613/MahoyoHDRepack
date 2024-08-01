@@ -3,6 +3,7 @@ using System.CommandLine;
 using System.CommandLine.Invocation;
 using System.CommandLine.IO;
 using System.IO;
+using System.Text;
 using LibHac.Fs.Fsa;
 using LibHac.FsSystem;
 using MahoyoHDRepack;
@@ -232,4 +233,5 @@ var noArchive = new Option<bool>("--no-arc", "Do not treat archives as directori
     rootCmd.Add(cmd);
 }
 
+Console.OutputEncoding = Encoding.UTF8;
 return await rootCmd.InvokeAsync(args).ConfigureAwait(false);

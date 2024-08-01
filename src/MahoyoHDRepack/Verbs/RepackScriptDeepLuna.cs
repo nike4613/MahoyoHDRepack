@@ -81,8 +81,6 @@ internal static class RepackScriptDeepLuna
 
         Console.WriteLine($"Loaded deepLuna with {deepLunaDb.Count} lines");
 
-        // TODO:
-
         Helpers.Assert(langLines.Length == jpLines.Length);
         var inserted = 0;
         var failed = 0;

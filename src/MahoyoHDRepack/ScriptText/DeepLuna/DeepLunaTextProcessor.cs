@@ -210,6 +210,39 @@ internal static class DeepLunaTextProcessor
 
         var atState = StringFormatState.None;
 
+        static void SetAtFormatState(StringBuilder sb, ref StringFormatState atState, StringFormatState newState)
+        {
+            newState &= StringFormatState.AtStateMask;
+
+            // if we need to remove ANY, we need to full-reset
+            if (((atState ^ newState) & atState) != 0)
+            {
+                _ = sb.Append("@r");
+                atState = StringFormatState.None;
+            }
+
+            // if we have some to add, add them
+            var toAddFlags = (atState ^ newState) & newState;
+            if (toAddFlags != 0)
+            {
+                if (toAddFlags.Has(StringFormatState.Italics))
+                {
+                    _ = sb.Append("@i");
+                    atState |= StringFormatState.Italics;
+                }
+                if (toAddFlags.Has(StringFormatState.Backwards))
+                {
+                    _ = sb.Append("@b");
+                    atState |= StringFormatState.Backwards;
+                }
+                if (toAddFlags.Has(StringFormatState.Antiqua))
+                {
+                    _ = sb.Append("@g");
+                    atState |= StringFormatState.Antiqua;
+                }
+            }
+        }
+
         foreach (var (fformat, text) in segments)
         {
             if (text.Length == 0) continue;
@@ -237,41 +270,16 @@ internal static class DeepLunaTextProcessor
                 fmtAtStates &= ~StringFormatState.Italics;
             }
 
-            // if we need to remove ANY, we need to full-reset
-            if (((atState ^ fmtAtStates) & atState) != 0)
-            {
-                _ = sb.Append("@r");
-                atState = StringFormatState.None;
-            }
-
-            // if we have some to add, add them
-            var toAddFlags = (atState ^ fmtAtStates) & fmtAtStates;
-            if (toAddFlags != 0)
-            {
-                if (toAddFlags.Has(StringFormatState.Italics))
-                {
-                    _ = sb.Append("@i");
-                    atState |= StringFormatState.Italics;
-                }
-                if (toAddFlags.Has(StringFormatState.Backwards))
-                {
-                    _ = sb.Append("@b");
-                    atState |= StringFormatState.Backwards;
-                }
-                if (toAddFlags.Has(StringFormatState.Antiqua))
-                {
-                    _ = sb.Append("@g");
-                    atState |= StringFormatState.Antiqua;
-                }
-            }
+            SetAtFormatState(sb, ref atState, fmtAtStates);
 
             var offsetIndex = -1;
 
             // if we have other flags, determine the correct codepoint offset index
             var otherFlags = format & StringFormatState.NonstandardFormatMask;
+            var specialFormattingKind = format & ~(StringFormatState.Antiqua | StringFormatState.Backwards);
             if (otherFlags != 0)
             {
-                switch (format & ~(StringFormatState.Antiqua | StringFormatState.Backwards))
+                switch (specialFormattingKind)
                 {
                     case StringFormatState.BackwardsItalics:
                         offsetIndex = 1;
@@ -309,14 +317,27 @@ internal static class DeepLunaTextProcessor
                 {
                     if ((int)c is >= FirstModifiedCodepoint and <= LastModifiedCodepoint)
                     {
+                        SetAtFormatState(sb, ref atState, fmtAtStates);
                         _ = sb.Append((char)(c + offset));
                     }
                     else
                     {
+                        if (!char.IsWhiteSpace(c))
+                        {
+                            // note: we need to ensure we use all formats for parts of the text which aren't affected by our manual remapping
+                            // TODO: generate a list of non-ASCII chars that also need processing
+                            SetAtFormatState(sb, ref atState, format);
+                        }
                         _ = sb.Append(c);
                     }
                 }
             }
+        }
+
+        if (atState.Has(StringFormatState.Backwards))
+        {
+            // if the last segment was backwards, we want to add a char to fix some engine funkiness
+            _ = sb.Append(' ');
         }
 
         return sb.ToString();

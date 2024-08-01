@@ -1,0 +1,7 @@
+@nsobid-9AFB5D182FCEF75DFDFC20183A60CD3F80FB767B
+
+@flag offset_shift 0x100
+
+@enabled
+// Remove the condition blocking ruby behind a 0 value
+000bd3ac    41010014

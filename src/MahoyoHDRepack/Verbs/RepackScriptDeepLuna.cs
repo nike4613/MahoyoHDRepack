@@ -95,7 +95,7 @@ internal static class RepackScriptDeepLuna
                 // TODO: process ruby text
                 if (line.Translated is not null)
                 {
-                    langLines[i] = line.Translated + "\r\n";
+                    langLines[i] = DeepLunaTextProcessor.ConvertDeepLunaText(line.Translated) + "\r\n";
                 }
 
                 inserted++;

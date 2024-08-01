@@ -156,8 +156,8 @@ internal static class DeepLunaTextProcessor
                                 formatMask = StringFormatState.Flipped;
                                 break;
                             case "ri":
-                                // reverso italics (NOT backward italics)
-                                formatMask = StringFormatState.Italics | StringFormatState.Flipped;
+                                // reverso italics (but they're actually also backwards italics)
+                                formatMask = StringFormatState.BackwardsItalics | StringFormatState.Flipped;
                                 break;
                             case "g":
                                 // antiqua
@@ -326,7 +326,17 @@ internal static class DeepLunaTextProcessor
                         {
                             // note: we need to ensure we use all formats for parts of the text which aren't affected by our manual remapping
                             // TODO: generate a list of non-ASCII chars that also need processing
-                            SetAtFormatState(sb, ref atState, format);
+
+                            var fixedFormat = format;
+                            if (fixedFormat.Has(StringFormatState.BackwardsItalics | StringFormatState.Backwards))
+                            {
+                                // backwards backwards-italics turn into normal italics
+                                // (we don't want to suppress the @b though, because it physically reverses the order of the characters still)
+                                fixedFormat &= ~StringFormatState.BackwardsItalics;
+                                fixedFormat |= StringFormatState.Italics;
+                            }
+
+                            SetAtFormatState(sb, ref atState, fixedFormat);
                         }
                         _ = sb.Append(c);
                     }

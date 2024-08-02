@@ -3,6 +3,7 @@ using System.Collections.Immutable;
 using System.Globalization;
 using System.Text;
 using CommunityToolkit.Diagnostics;
+using CommunityToolkit.HighPerformance.Helpers;
 
 namespace MahoyoHDRepack.ScriptText.DeepLuna;
 
@@ -17,7 +18,7 @@ internal static class DeepLunaParser
         InBlock,
     }
 
-    public static void Parse(DeepLunaDatabase targetDatabase, DeepLunaTextProcessor processor, string filename, string text)
+    public static void Parse(DeepLunaDatabase targetDatabase, DeepLunaTextProcessor processor, string filename, string text, bool doNotWarnIfUnused = false)
     {
         var lineno = 1;
         var braceCount = 0;
@@ -202,6 +203,7 @@ internal static class DeepLunaParser
                                 var line = new DeepLunaLine(filename, blockStartLine, lineno, hash, offset,
                                     translatedBuilder.Length > 0 ? processor.ConvertDeepLunaText(translatedBuilder.ToString()) : null,
                                     commentBuilder.Length > 0 ? commentBuilder.ToString() : null);
+                                line.Used = doNotWarnIfUnused;
                                 _ = translatedBuilder.Clear();
                                 _ = commentBuilder.Clear();
                                 _ = contentHashBuilder.Clear();

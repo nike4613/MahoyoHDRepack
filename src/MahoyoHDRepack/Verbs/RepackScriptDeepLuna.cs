@@ -108,11 +108,11 @@ internal static class RepackScriptDeepLuna
         failed = 0;
         for (var i = 0; i < langLines.Length; i++)
         {
+            var jpSpan = jpLines[i].AsSpan();
             // look up a translation for this line
-            if (deepLunaDb.TryLookupLine(jpLines[i].AsSpan(), i, out var line))
+            if (deepLunaDb.TryLookupLine(jpSpan, i, out var line))
             {
                 // found a match, insert it
-                // TODO: process ruby text
                 if (line.Translated is not null)
                 {
                     langLines[i] = line.Translated + "\r\n";
@@ -121,10 +121,21 @@ internal static class RepackScriptDeepLuna
                 line.Used = true;
                 inserted++;
             }
+            else if (jpSpan is [.., (byte)'\r', (byte)'\n'] // also try looking up the line with no trailing newlines
+                && deepLunaDb.TryLookupLine(jpSpan[..^2], i, out line))
+            {
+                if (line.Translated is not null)
+                {
+                    langLines[i] = line.Translated;
+                }
+
+                line.Used = true;
+                inserted++;
+            }
             else
             {
                 // did not find a match, print
-                PrintMissingLine(langLines[i], jpLines[i].AsSpan());
+                PrintMissingLine(langLines[i], jpSpan);
                 failed++;
             }
         }

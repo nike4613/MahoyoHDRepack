@@ -87,6 +87,13 @@ internal sealed class CompleteTsukiReLayeredFS
                 File.ReadAllText(file));
         }
 
+        // we will also load the system strings, because there *does* seem to be a bit of overlap, but we won't warn if they're unused
+        DeepLunaParser.Parse(
+            db, processor,
+            "system_strings/sysmes_text.en",
+            File.ReadAllText(Path.Combine(tsukihimatesDir.FullName, "system_strings", "sysmes_text.en")),
+            doNotWarnIfUnused: true);
+
         Console.WriteLine($"Loaded deepLuna script with {db.Count} lines");
 
         RepackScriptDeepLuna.RepackScriptText(targetLang, romfs, db, out var inserted, out var failed);

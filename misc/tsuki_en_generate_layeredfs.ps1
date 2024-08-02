@@ -8,13 +8,21 @@
 param (
     [Parameter(Mandatory=$true)]
     [string]
-    # The XCI or NSP of the Tsukihime base game. Ryujinx should be configured with updates for the game.
+    # The XCI or NSP of the Tsukihime EN base game. Ryujinx should be configured with updates for the game.
     $Xci,
     
     [Parameter(Mandatory=$true)]
     [string]
     # Tsukihimates translation repo directory.
     $Tsukihimates,
+
+    [string]
+    # An XCI or NSP of the base JP release of Tsukihime
+    $TsukiJP = $null,
+
+    [string]
+    # The NSP of the official Tsukihimates patch
+    $TsukiPatch = $null,
     
     [Parameter(Mandatory=$true)]
     [string]
@@ -103,6 +111,22 @@ foreach ($font in $fontPaths) {
         $fontinfo `
         (Join-Path $romfs $font);
 }
+
+# Next, finish the romfs
+$romfsCompleteArgs = @();
+if ($null -ne $TsukiJP) {
+    $romfsCompleteArgs += @("--tsukihime", $TsukiJP);
+}
+if ($null -ne $TsukiPatch) {
+    $romfsCompleteArgs += @("--tsukihimates-nsp", $TsukiPatch);
+}
+
+&$dotnet run --project "src/MahoyoHDRepack/MahoyoHDRepack.csproj" -c Release -f $TFM --no-build -- `
+    rebuild-tsukire-en --xci $Xci `
+    -l EN -o $romfs `
+    --tsukihimates-dir $Tsukihimates `
+    @romfsCompleteArgs;
+
 
 # Finally, copy in the exefs patches
 $exefs = (Join-Path $PatchDir "exefs");

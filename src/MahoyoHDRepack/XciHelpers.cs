@@ -1,4 +1,5 @@
 ﻿using System.Globalization;
+using System.Linq;
 using CommunityToolkit.Diagnostics;
 using LibHac.Fs;
 using LibHac.Fs.Fsa;
@@ -7,13 +8,13 @@ using LibHac.Tools.Fs;
 using LibHac.Tools.FsSystem;
 using LibHac.Tools.FsSystem.NcaUtils;
 using Ryujinx.HLE.FileSystem;
-using Ryujinx.UI.App.Common;
+using Ryujinx.HLE.Loaders.Processes.Extensions;
 
 namespace MahoyoHDRepack;
 
 public static class XciHelpers
 {
-    public static IFileSystem MountXci(IStorage xciStorage, VirtualFileSystem vfs, string filename, int programIndex = 0)
+    public static IFileSystem MountXci(IStorage xciStorage, VirtualFileSystem vfs, string filename, IStorage? explicitUpdatePatch = null, int programIndex = 0)
     {
         Nca? mainNca = null;
         Nca? patchNca = null;
@@ -35,7 +36,11 @@ public static class XciHelpers
                 pfs = tmp;
             }
 
-            (mainNca, patchNca, _) = ApplicationLibrary.GetGameData(vfs, pfs, programIndex);
+            var appCmn = pfs.GetContentData(LibHac.Ncm.ContentMetaType.Application, vfs, IntegrityCheckLevel.ErrorOnInvalid).Values.Single();
+            mainNca = appCmn.GetNcaByType(vfs.KeySet, LibHac.Ncm.ContentType.Program);
+
+            var patchCmn = pfs.GetContentData(LibHac.Ncm.ContentMetaType.Patch, vfs, IntegrityCheckLevel.ErrorOnInvalid).Values.SingleOrDefault();
+            patchNca = patchCmn?.GetNcaByType(vfs.KeySet, LibHac.Ncm.ContentType.Program);
         }
         else if (extension is ".NCA")
         {
@@ -48,8 +53,21 @@ public static class XciHelpers
 
         Helpers.Assert(mainNca is not null);
 
-        var (updatePatchNca, _) = ApplicationLibrary.GetGameUpdateData(vfs,
-            mainNca.Header.TitleId.ToString("x16", CultureInfo.InvariantCulture), programIndex, out _);
+        Nca? updatePatchNca;
+
+        if (explicitUpdatePatch is null)
+        {
+            (updatePatchNca, _) = mainNca.GetUpdateData(vfs, IntegrityCheckLevel.ErrorOnInvalid, 0, out _);
+        }
+        else
+        {
+            var pfs = new PartitionFileSystem();
+            pfs.Initialize(explicitUpdatePatch).ThrowIfFailure();
+
+            var patchCmn = pfs.GetContentData(LibHac.Ncm.ContentMetaType.Patch, vfs, IntegrityCheckLevel.ErrorOnInvalid).Values.SingleOrDefault();
+            updatePatchNca = patchCmn?.GetNcaByType(vfs.KeySet, LibHac.Ncm.ContentType.Program);
+        }
+
         if (updatePatchNca is not null)
         {
             patchNca = updatePatchNca;

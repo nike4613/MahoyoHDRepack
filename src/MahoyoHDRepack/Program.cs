@@ -205,6 +205,38 @@ var noArchive = new Option<bool>("--no-arc", "Do not treat archives as directori
 }
 
 {
+    var tsukihimatesDir = new Option<DirectoryInfo>(
+        ["--tsukihimates-dir"], "The Tsukihimates translation repository directory")
+    {
+        IsRequired = true,
+        Arity = ArgumentArity.ExactlyOne,
+    };
+
+    var tsukihimeJp = new Option<FileInfo>(
+        ["--tsukihime", "--tsukihime-jp"], "The Tsukihime JP NSP or XCI")
+    {
+        IsRequired = false,
+        Arity = ArgumentArity.ZeroOrOne,
+    };
+
+    var tsukihimatesNsp = new Option<FileInfo>(
+        ["--tsukihimates-nsp"], "The Tsukihimates JP patch NSP")
+    {
+        IsRequired = false,
+        Arity = ArgumentArity.ZeroOrOne,
+    };
+
+    var cmd = new Command("rebuild-tsukire-en")
+    {
+        xciFile, language, outDir, invertMzx, tsukihimatesDir, tsukihimatesNsp, tsukihimeJp
+    };
+
+    var exec = CompleteTsukiReLayeredFS.Run;
+    cmd.SetHandler(exec, ryuBasePath, xciFile, language, tsukihimatesDir, tsukihimeJp, tsukihimatesNsp, outDir, invertMzx);
+    rootCmd.Add(cmd);
+}
+
+{
     var replacementText = new Option<FileInfo>(
         ["--replacement-text", "-r"], "Replacement text")
     {

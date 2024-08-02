@@ -1,11 +1,13 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Text;
+using System.Text.Json.Serialization;
 
 namespace MahoyoHDRepack.ScriptText.DeepLuna;
 
-internal static class DeepLunaTextProcessor
+internal sealed class DeepLunaTextProcessor
 {
     [Flags]
     private enum CurrentAtLineState
@@ -38,7 +40,7 @@ internal static class DeepLunaTextProcessor
     private static StringFormatState MergeFormatStates(CurrentAtLineState atState, StringFormatState formatState)
         => (StringFormatState)atState | formatState;
 
-    public static string ConvertDeepLunaText(string text)
+    public string ConvertDeepLunaText(string text)
     {
         var textSegments = new List<(StringFormatState Format, string Text)>();
         var sb = new StringBuilder();
@@ -202,7 +204,32 @@ internal static class DeepLunaTextProcessor
     private const int LastModifiedCodepoint = 0x7E;
     private const int RangeSize = 0x80;
 
-    private static string BuildFinalLine(StringBuilder sb, List<(StringFormatState Format, string Text)> segments, bool shouldCenter, bool shouldRightAlign)
+    private const int ForwardItalicAmount = -13;
+
+    public record struct SpecialFormatOpts(
+        int ItalicAmt,
+        bool HorizFlip,
+        bool VertFlip
+        );
+
+    private static SpecialFormatOpts GetFormatOptsForFormat(StringFormatState formatState)
+    {
+        return new(
+            (formatState & (StringFormatState.Italics | StringFormatState.BackwardsItalics)) switch
+            {
+                StringFormatState.None => 0,
+                StringFormatState.Italics => ForwardItalicAmount,
+                StringFormatState.BackwardsItalics => -ForwardItalicAmount,
+                _ => 0
+            },
+            formatState.Has(StringFormatState.Flipped),
+            formatState.Has(StringFormatState.VerticalFlipped));
+    }
+
+    private readonly Dictionary<SpecialFormatOpts, int> specialFormatOffsetIndex = new();
+    private readonly List<Rune> extraFormatCodepoints = new();
+
+    private string BuildFinalLine(StringBuilder sb, List<(StringFormatState Format, string Text)> segments, bool shouldCenter, bool shouldRightAlign)
     {
         _ = sb.Clear();
 
@@ -313,28 +340,12 @@ internal static class DeepLunaTextProcessor
             var specialFormattingKind = format & ~(StringFormatState.Antiqua | StringFormatState.Backwards);
             if (otherFlags != 0)
             {
-                switch (specialFormattingKind)
+                var stateOpts = GetFormatOptsForFormat(specialFormattingKind);
+                if (!specialFormatOffsetIndex.TryGetValue(stateOpts, out var idx))
                 {
-                    case StringFormatState.BackwardsItalics:
-                        offsetIndex = 1;
-                        break;
-                    case StringFormatState.Flipped:
-                        offsetIndex = 2;
-                        break;
-                    case StringFormatState.Italics | StringFormatState.Flipped:
-                        offsetIndex = 3;
-                        break;
-                    case StringFormatState.BackwardsItalics | StringFormatState.Flipped:
-                        offsetIndex = 4;
-                        break;
-                    case StringFormatState.VerticalFlipped:
-                        offsetIndex = 5;
-                        break;
-
-                    case var x:
-                        Debug.Fail($"Unsupported special formatting {x}");
-                        break;
+                    specialFormatOffsetIndex.Add(stateOpts, idx = specialFormatOffsetIndex.Count);
                 }
+                offsetIndex = idx;
             }
 
             if (offsetIndex == -1)
@@ -362,23 +373,42 @@ internal static class DeepLunaTextProcessor
             else
             {
                 // we need to offset, do that
-                var offset = PrivateUseOffset + (RangeSize * offsetIndex) - FirstModifiedCodepoint;
+                var segmentBase = PrivateUseOffset + (RangeSize * offsetIndex);
+                var asciiOfset = segmentBase - FirstModifiedCodepoint;
 
                 for (var j = shouldRightAlign ? text.Length - 1 : 0; j >= 0 && j < text.Length; j += iterDir)
                 {
                     var c = text[j];
-                    if ((int)c is >= FirstModifiedCodepoint and <= LastModifiedCodepoint)
+                    var cp = new Rune(c);
+
+                    if (!shouldRightAlign)
                     {
-                        SetAtFormatState(sb, ref atState, fmtAtStates);
-                        _ = sb.Append((char)(c + offset));
+                        if (char.IsHighSurrogate(c))
+                        {
+                            cp = new Rune(c, text[++j]);
+                        }
                     }
                     else
                     {
-                        if (!char.IsWhiteSpace(c))
+                        if (char.IsLowSurrogate(c))
+                        {
+                            cp = new Rune(text[--j], c);
+                        }
+                    }
+
+                    if (cp.Value is >= FirstModifiedCodepoint and <= LastModifiedCodepoint)
+                    {
+                        //SetAtFormatState(sb, ref atState, fmtAtStates);
+                        _ = sb.Append(null, $"{new Rune(cp.Value + asciiOfset)}"); // note: this codepath hits AppendSpanFormattable
+                    }
+                    else
+                    {
+                        if (!Rune.IsWhiteSpace(cp))
                         {
                             // note: we need to ensure we use all formats for parts of the text which aren't affected by our manual remapping
                             // TODO: generate a list of non-ASCII chars that also need processing
 
+                            /*
                             var fixedFormat = format;
                             if (fixedFormat.Has(StringFormatState.BackwardsItalics | StringFormatState.Backwards))
                             {
@@ -389,8 +419,23 @@ internal static class DeepLunaTextProcessor
                             }
 
                             SetAtFormatState(sb, ref atState, fixedFormat);
+                            */
+                            var extraIndex = extraFormatCodepoints.IndexOf(cp);
+                            if (extraIndex < 0)
+                            {
+                                extraIndex = extraFormatCodepoints.Count;
+                                extraFormatCodepoints.Add(cp);
+                            }
+
+                            if (extraIndex >= RangeSize - (LastModifiedCodepoint - FirstModifiedCodepoint + 1))
+                            {
+                                throw new InvalidOperationException("Too many extra codepoints!");
+                            }
+                            extraIndex += LastModifiedCodepoint - FirstModifiedCodepoint + 1;
+
+                            cp = new Rune(segmentBase + extraIndex);
                         }
-                        _ = sb.Append(c);
+                        _ = sb.Append(null, $"{cp}"); // note: this codepath hits AppendSpanFormattable
                     }
                 }
             }
@@ -404,4 +449,32 @@ internal static class DeepLunaTextProcessor
 
         return sb.ToString();
     }
+
+    public sealed class FontInfo
+    {
+        public required int RangeSize { get; init; }
+        public required int AutoMinCodepoint { get; init; }
+        public required int AutoMaxCodepoint { get; init; }
+        public required IEnumerable<SpecialFormatOpts> FormatOptions { get; init; }
+        public required IEnumerable<int> ExtraCodepoints { get; init; }
+    }
+
+    public FontInfo GetFontInfoModel()
+    {
+        return new FontInfo
+        {
+            RangeSize = RangeSize,
+            AutoMinCodepoint = FirstModifiedCodepoint,
+            AutoMaxCodepoint = LastModifiedCodepoint,
+            FormatOptions = specialFormatOffsetIndex.OrderBy(kvp => kvp.Value).Select(kvp => kvp.Key),
+            ExtraCodepoints = extraFormatCodepoints.Select(rune => rune.Value)
+        };
+    }
+}
+
+[JsonSourceGenerationOptions(MaxDepth = 5)]
+[JsonSerializable(typeof(DeepLunaTextProcessor.FontInfo))]
+internal sealed partial class FontInfoJsonContext : JsonSerializerContext
+{
+
 }

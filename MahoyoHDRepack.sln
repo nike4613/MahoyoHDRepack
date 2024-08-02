@@ -19,7 +19,9 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution 
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{0CE6727B-883F-4C9B-B02F-12470A636C5C}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MahoyoHDRepack.Tests", "tests\MahoyoHDRepack.Tests\MahoyoHDRepack.Tests.csproj", "{73F456C4-C66D-4B7C-B221-FB79898BBD21}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MahoyoHDRepack.Tests", "tests\MahoyoHDRepack.Tests\MahoyoHDRepack.Tests.csproj", "{73F456C4-C66D-4B7C-B221-FB79898BBD21}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "misc", "misc\misc.csproj", "{28BCD7E7-45B9-423E-BE43-B3481AAB32F6}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -39,6 +41,10 @@ Global
 		{73F456C4-C66D-4B7C-B221-FB79898BBD21}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{73F456C4-C66D-4B7C-B221-FB79898BBD21}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{73F456C4-C66D-4B7C-B221-FB79898BBD21}.Release|Any CPU.Build.0 = Release|Any CPU
+		{28BCD7E7-45B9-423E-BE43-B3481AAB32F6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{28BCD7E7-45B9-423E-BE43-B3481AAB32F6}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{28BCD7E7-45B9-423E-BE43-B3481AAB32F6}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{28BCD7E7-45B9-423E-BE43-B3481AAB32F6}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -47,6 +53,7 @@ Global
 		{BCE99836-7C93-44E4-9CE7-10359F7AEADA} = {3EC0C52A-0303-4A25-9F40-99D55BE8E85D}
 		{A3BFE317-D30B-4E7D-9EFB-3D65250C0D5D} = {556B2C47-F83E-4A5A-977D-4748CFB52AC0}
 		{73F456C4-C66D-4B7C-B221-FB79898BBD21} = {0CE6727B-883F-4C9B-B02F-12470A636C5C}
+		{28BCD7E7-45B9-423E-BE43-B3481AAB32F6} = {556B2C47-F83E-4A5A-977D-4748CFB52AC0}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {20207608-C08A-4C49-A03D-24862E0C0A29}

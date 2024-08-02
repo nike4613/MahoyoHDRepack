@@ -17,7 +17,7 @@ internal static class DeepLunaParser
         InBlock,
     }
 
-    public static void Parse(DeepLunaDatabase targetDatabase, string filename, string text)
+    public static void Parse(DeepLunaDatabase targetDatabase, DeepLunaTextProcessor processor, string filename, string text)
     {
         var lineno = 1;
         var braceCount = 0;
@@ -200,7 +200,7 @@ internal static class DeepLunaParser
                                 }
 
                                 var line = new DeepLunaLine(filename, blockStartLine, lineno, hash, offset,
-                                    translatedBuilder.Length > 0 ? DeepLunaTextProcessor.ConvertDeepLunaText(translatedBuilder.ToString()) : null,
+                                    translatedBuilder.Length > 0 ? processor.ConvertDeepLunaText(translatedBuilder.ToString()) : null,
                                     commentBuilder.Length > 0 ? commentBuilder.ToString() : null);
                                 _ = translatedBuilder.Clear();
                                 _ = commentBuilder.Clear();

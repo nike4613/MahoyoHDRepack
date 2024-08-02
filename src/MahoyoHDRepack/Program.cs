@@ -187,14 +187,20 @@ var noArchive = new Option<bool>("--no-arc", "Do not treat archives as directori
         Arity = ArgumentArity.OneOrMore
     };
 
+    var fontInfoJson = new Option<FileInfo>(
+        ["--font-info"], "fontinfo.json to generate needed font information")
+    {
+        IsRequired = true,
+        Arity = ArgumentArity.ExactlyOne,
+    };
 
     var cmd = new Command("repack-script-deepluna")
     {
-        xciFile, language, outDir, lunaFiles, invertMzx,
+        xciFile, language, outDir, lunaFiles, invertMzx, fontInfoJson
     };
 
     var exec = RepackScriptDeepLuna.Run;
-    cmd.SetHandler(exec, ryuBasePath, xciFile, language, lunaFiles, outDir, invertMzx);
+    cmd.SetHandler(exec, ryuBasePath, xciFile, language, lunaFiles, outDir, fontInfoJson, invertMzx);
     rootCmd.Add(cmd);
 }
 

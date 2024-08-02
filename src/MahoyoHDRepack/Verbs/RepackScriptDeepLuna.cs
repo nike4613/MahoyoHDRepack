@@ -2,6 +2,7 @@
 using System.IO;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using LibHac.Common;
 using LibHac.Fs.Fsa;
 using LibHac.FsSystem;
@@ -19,6 +20,7 @@ internal static class RepackScriptDeepLuna
         GameLanguage secondLang,
         string[] deepLunaFilesAndDirs,
         DirectoryInfo outDir,
+        FileInfo fontInfoJson,
         bool invertMzx
     )
     {
@@ -59,11 +61,13 @@ internal static class RepackScriptDeepLuna
 
         // now, let's load the deepLuna database
         var deepLunaDb = new DeepLunaDatabase();
+        var textProcessor = new DeepLunaTextProcessor();
+
         foreach (var fileOrDir in deepLunaFilesAndDirs)
         {
             if (File.Exists(fileOrDir))
             {
-                DeepLunaParser.Parse(deepLunaDb,
+                DeepLunaParser.Parse(deepLunaDb, textProcessor,
                     Path.GetFileName(fileOrDir),
                     File.ReadAllText(fileOrDir));
             }
@@ -72,7 +76,7 @@ internal static class RepackScriptDeepLuna
                 // this is a dir, enumerate all *.txt files
                 foreach (var file in Directory.EnumerateFiles(fileOrDir, "*.txt", SearchOption.AllDirectories))
                 {
-                    DeepLunaParser.Parse(deepLunaDb,
+                    DeepLunaParser.Parse(deepLunaDb, textProcessor,
                         Path.GetFileName(file),
                         File.ReadAllText(file));
                 }
@@ -80,6 +84,12 @@ internal static class RepackScriptDeepLuna
         }
 
         Console.WriteLine($"Loaded deepLuna with {deepLunaDb.Count} lines");
+
+        Console.WriteLine($"Writing font info to {fontInfoJson}");
+        using (var stream = File.Create(fontInfoJson.FullName))
+        {
+            JsonSerializer.Serialize(stream, textProcessor.GetFontInfoModel(), FontInfoJsonContext.Default.FontInfo);
+        }
 
         Helpers.Assert(langLines.Length == jpLines.Length);
         var inserted = 0;

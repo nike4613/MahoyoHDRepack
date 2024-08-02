@@ -91,6 +91,8 @@ internal static class RepackScriptDeepLuna
             JsonSerializer.Serialize(stream, textProcessor.GetFontInfoModel(), FontInfoJsonContext.Default.FontInfo);
         }
 
+        const string Sep = "-------------------------------------------------------------------------------------------------------";
+
         Helpers.Assert(langLines.Length == jpLines.Length);
         var inserted = 0;
         var failed = 0;
@@ -106,22 +108,44 @@ internal static class RepackScriptDeepLuna
                     langLines[i] = line.Translated + "\r\n";
                 }
 
+                line.Used = true;
                 inserted++;
             }
             else
             {
                 // did not find a match, print
                 Console.WriteLine($"ERROR: Could not find match for JP line: sha:{Convert.ToHexString(SHA1.HashData(jpLines[i].AsSpan())).ToLowerInvariant()}");
-                Console.WriteLine("-------------------------------------------------------------------------------------------------------");
+                Console.WriteLine(Sep);
                 Console.WriteLine(Encoding.UTF8.GetString(jpLines[i].AsSpan()));
-                Console.WriteLine("-------------------------------------------------------------------------------------------------------");
+                Console.WriteLine(Sep);
                 Console.WriteLine(langLines[i]);
-                Console.WriteLine("-------------------------------------------------------------------------------------------------------");
+                Console.WriteLine(Sep);
                 failed++;
             }
         }
 
-        Console.WriteLine($"Script insert completed. Inserted {inserted} lines, failed on {failed} lines.");
+        var unused = 0;
+        foreach (var line in deepLunaDb.UnusedLines)
+        {
+            Console.Write($"WARNING: Unused deepLuna line: ");
+            if (!line.Hash.IsDefault)
+            {
+                Console.WriteLine($"sha:{Convert.ToHexString(line.Hash.AsSpan()).ToLowerInvariant()}");
+            }
+            else
+            {
+                Console.WriteLine($"offset:{line.Offset}");
+            }
+            Console.WriteLine(Sep);
+            Console.WriteLine(line.Translated);
+            Console.WriteLine(Sep);
+            Console.WriteLine($"From {line.SourceFile} @ {line.SourceLineStart}");
+            Console.WriteLine($"Comment: {line.Comments}");
+            Console.WriteLine(Sep);
+            unused++;
+        }
+
+        Console.WriteLine($"Script insert completed. Inserted {inserted} lines, failed on {failed} lines, not using {unused} lines.");
 
         // langLines now contains our language lines
 

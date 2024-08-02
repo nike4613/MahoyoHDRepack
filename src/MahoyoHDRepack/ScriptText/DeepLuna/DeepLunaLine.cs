@@ -12,6 +12,8 @@ internal sealed record DeepLunaLine(
     string? Translated,
     string? Comments) : IEquatable<DeepLunaLine>
 {
+    internal bool Used;
+
     public override int GetHashCode()
     {
         var hc = new HashCode();

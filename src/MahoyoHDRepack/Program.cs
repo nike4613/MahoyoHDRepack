@@ -66,6 +66,13 @@ var inParallel = new Option<bool>(
 
 };
 
+var fontInfoJson = new Option<FileInfo>(
+    ["--font-info"], "fontinfo.json to generate needed font information")
+{
+    IsRequired = true,
+    Arity = ArgumentArity.ExactlyOne,
+};
+
 rootCmd.AddGlobalOption(ryuBasePath);
 
 void ExecWithRootFs(InvocationContext context, Action<IFileSystem> action)
@@ -179,19 +186,13 @@ var noArchive = new Option<bool>("--no-arc", "Do not treat archives as directori
     cmd.SetHandler(exec, ryuBasePath, xciFile, language, csv, autoReplaceAboveScore, outDir, invertMzx);
     rootCmd.Add(cmd);
 }
+
 {
     var lunaFiles = new Option<string[]>(
         ["-d", "--luna"], "deepLuna translation files")
     {
         IsRequired = true,
         Arity = ArgumentArity.OneOrMore
-    };
-
-    var fontInfoJson = new Option<FileInfo>(
-        ["--font-info"], "fontinfo.json to generate needed font information")
-    {
-        IsRequired = true,
-        Arity = ArgumentArity.ExactlyOne,
     };
 
     var cmd = new Command("repack-script-deepluna")
@@ -228,11 +229,22 @@ var noArchive = new Option<bool>("--no-arc", "Do not treat archives as directori
 
     var cmd = new Command("rebuild-tsukire-en")
     {
-        xciFile, language, outDir, invertMzx, tsukihimatesDir, tsukihimatesNsp, tsukihimeJp
+        xciFile, language, outDir, invertMzx, tsukihimatesDir, tsukihimatesNsp, tsukihimeJp, fontInfoJson
     };
 
-    var exec = CompleteTsukiReLayeredFS.Run;
-    cmd.SetHandler(exec, ryuBasePath, xciFile, language, tsukihimatesDir, tsukihimeJp, tsukihimatesNsp, outDir, invertMzx);
+    cmd.SetHandler(ctx =>
+    {
+        CompleteTsukiReLayeredFS.Run(
+            ctx.ParseResult.GetValueForOption(ryuBasePath),
+            ctx.ParseResult.GetValueForOption(xciFile)!,
+            ctx.ParseResult.GetValueForOption(language),
+            ctx.ParseResult.GetValueForOption(tsukihimatesDir)!,
+            ctx.ParseResult.GetValueForOption(fontInfoJson)!,
+            ctx.ParseResult.GetValueForOption(tsukihimeJp),
+            ctx.ParseResult.GetValueForOption(tsukihimatesNsp),
+            ctx.ParseResult.GetValueForOption(outDir)!,
+            ctx.ParseResult.GetValueForOption(invertMzx));
+    });
     rootCmd.Add(cmd);
 }
 

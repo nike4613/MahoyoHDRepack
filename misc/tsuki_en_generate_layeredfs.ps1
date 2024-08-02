@@ -82,13 +82,20 @@ $fontinfo = Join-Path $tmp "fontinfo.json";
 
 $romfs = (Join-Path $PatchDir "romfs");
 
-# First, run MahoyoHDRepack to generate the script replacement and font info
+# First, run MahoyoHDRepack to generate most of the RomFS
+$romfsCompleteArgs = @();
+if ($null -ne $TsukiJP) {
+    $romfsCompleteArgs += @("--tsukihime", $TsukiJP);
+}
+if ($null -ne $TsukiPatch) {
+    $romfsCompleteArgs += @("--tsukihimates-nsp", $TsukiPatch);
+}
 &$dotnet run --project "src/MahoyoHDRepack/MahoyoHDRepack.csproj" -c Release -f $TFM -- `
     repack-script-deepluna --xci $Xci `
     -l EN -o $romfs `
     --font-info $fontinfo `
-    --luna (Join-Path $Tsukihimates "script") `
-    --luna (Join-Path $Tsukihimates "system_strings" "sysmes_text.en");
+    --tsukihimates-dir $Tsukihimates `
+    @romfsCompleteArgs;
 
 # Then, lets extract and fix our fonts
 $fontPaths = @(
@@ -111,22 +118,6 @@ foreach ($font in $fontPaths) {
         $fontinfo `
         (Join-Path $romfs $font);
 }
-
-# Next, finish the romfs
-$romfsCompleteArgs = @();
-if ($null -ne $TsukiJP) {
-    $romfsCompleteArgs += @("--tsukihime", $TsukiJP);
-}
-if ($null -ne $TsukiPatch) {
-    $romfsCompleteArgs += @("--tsukihimates-nsp", $TsukiPatch);
-}
-
-&$dotnet run --project "src/MahoyoHDRepack/MahoyoHDRepack.csproj" -c Release -f $TFM --no-build -- `
-    rebuild-tsukire-en --xci $Xci `
-    -l EN -o $romfs `
-    --tsukihimates-dir $Tsukihimates `
-    @romfsCompleteArgs;
-
 
 # Finally, copy in the exefs patches
 $exefs = (Join-Path $PatchDir "exefs");

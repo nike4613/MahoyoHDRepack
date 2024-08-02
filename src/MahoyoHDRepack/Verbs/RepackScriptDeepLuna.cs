@@ -40,25 +40,6 @@ internal static class RepackScriptDeepLuna
         using var outRomfs = new SharedRef<IFileSystem>(new LocalFileSystem(outDir.FullName));
         using var romfs = new WriteOverlayFileSystem(rawRomfs, outRomfs);
 
-        using var uniqScriptTextFile = new UniqueRef<IFile>();
-        romfs.OpenFile(ref uniqScriptTextFile.Ref, "/script_text.mrg".ToU8Span(), LibHac.Fs.OpenMode.Read).ThrowIfFailure();
-
-        Helpers.Assert(FileScanner.ProbeForFileType(uniqScriptTextFile.Get) is KnownFileTypes.Mzp, "script_text.mrg is not an mzp???");
-
-        using var uniqMzpFs = new UniqueRef<MzpFileSystem>();
-        MzpFileSystem.Read(ref uniqMzpFs.Ref, uniqScriptTextFile.Get.AsStorage()).ThrowIfFailure();
-
-        using var mzpFs = uniqMzpFs.Release();
-
-        // we now have access to script_text's filesystem
-
-        // we always want to read the JP and the target language
-        LineBoundaryParser.ReadLinesU8(mzpFs, GameLanguage.JP, out var jpLines).ThrowIfFailure();
-        LineBoundaryParser.ReadLines(mzpFs, secondLang, out var langLines).ThrowIfFailure();
-
-        Console.WriteLine($"Loaded JP with {jpLines.Length} strings");
-        Console.WriteLine($"Loaded {secondLang} with {langLines.Length} strings");
-
         // now, let's load the deepLuna database
         var deepLunaDb = new DeepLunaDatabase();
         var textProcessor = new DeepLunaTextProcessor();
@@ -91,11 +72,40 @@ internal static class RepackScriptDeepLuna
             JsonSerializer.Serialize(stream, textProcessor.GetFontInfoModel(), FontInfoJsonContext.Default.FontInfo);
         }
 
-        const string Sep = "-------------------------------------------------------------------------------------------------------";
+        RepackScriptText(secondLang, romfs, deepLunaDb, out var inserted, out var failed);
+
+        var unused = 0;
+        foreach (var line in deepLunaDb.UnusedLines)
+        {
+            PrintUnusedLine(line);
+            unused++;
+        }
+
+        Console.WriteLine($"Script insert completed. Inserted {inserted} lines, failed on {failed} lines, not using {unused} lines.");
+    }
+
+    internal static void RepackScriptText(GameLanguage secondLang, IFileSystem romfs, DeepLunaDatabase deepLunaDb, out int inserted, out int failed)
+    {
+        using var uniqScriptTextFile = new UniqueRef<IFile>();
+        romfs.OpenFile(ref uniqScriptTextFile.Ref, "/script_text.mrg".ToU8Span(), LibHac.Fs.OpenMode.ReadWrite).ThrowIfFailure();
+
+        Helpers.Assert(FileScanner.ProbeForFileType(uniqScriptTextFile.Get) is KnownFileTypes.Mzp, "script_text.mrg is not an mzp???");
+        using var uniqMzpFs = new UniqueRef<MzpFileSystem>();
+        MzpFileSystem.Read(ref uniqMzpFs.Ref, uniqScriptTextFile.Get.AsStorage()).ThrowIfFailure();
+        using var mzpFs = uniqMzpFs.Release();
+
+        // we now have access to script_text's filesystem
+
+        // we always want to read the JP and the target language
+        LineBoundaryParser.ReadLinesU8(mzpFs, GameLanguage.JP, out var jpLines).ThrowIfFailure();
+        LineBoundaryParser.ReadLines(mzpFs, secondLang, out var langLines).ThrowIfFailure();
+
+        Console.WriteLine($"Loaded JP with {jpLines.Length} strings");
+        Console.WriteLine($"Loaded {secondLang} with {langLines.Length} strings");
 
         Helpers.Assert(langLines.Length == jpLines.Length);
-        var inserted = 0;
-        var failed = 0;
+        inserted = 0;
+        failed = 0;
         for (var i = 0; i < langLines.Length; i++)
         {
             // look up a translation for this line
@@ -114,42 +124,45 @@ internal static class RepackScriptDeepLuna
             else
             {
                 // did not find a match, print
-                Console.WriteLine($"ERROR: Could not find match for JP line: sha:{Convert.ToHexString(SHA1.HashData(jpLines[i].AsSpan())).ToLowerInvariant()}");
-                Console.WriteLine(Sep);
-                Console.WriteLine(Encoding.UTF8.GetString(jpLines[i].AsSpan()));
-                Console.WriteLine(Sep);
-                Console.WriteLine(langLines[i]);
-                Console.WriteLine(Sep);
+                PrintMissingLine(langLines[i], jpLines[i].AsSpan());
                 failed++;
             }
         }
-
-        var unused = 0;
-        foreach (var line in deepLunaDb.UnusedLines)
-        {
-            Console.Write($"WARNING: Unused deepLuna line: ");
-            if (!line.Hash.IsDefault)
-            {
-                Console.WriteLine($"sha:{Convert.ToHexString(line.Hash.AsSpan()).ToLowerInvariant()}");
-            }
-            else
-            {
-                Console.WriteLine($"offset:{line.Offset}");
-            }
-            Console.WriteLine(Sep);
-            Console.WriteLine(line.Translated);
-            Console.WriteLine(Sep);
-            Console.WriteLine($"From {line.SourceFile} @ {line.SourceLineStart}");
-            Console.WriteLine($"Comment: {line.Comments}");
-            Console.WriteLine(Sep);
-            unused++;
-        }
-
-        Console.WriteLine($"Script insert completed. Inserted {inserted} lines, failed on {failed} lines, not using {unused} lines.");
 
         // langLines now contains our language lines
 
         ScriptLineWriter.WriteLines(mzpFs, secondLang, langLines).ThrowIfFailure();
         mzpFs.Flush().ThrowIfFailure();
+    }
+
+    private const string Sep = "-------------------------------------------------------------------------------------------------------";
+
+    internal static void PrintMissingLine(string langLine, ReadOnlySpan<byte> jpLine)
+    {
+        Console.WriteLine($"ERROR: Could not find match for JP line: sha:{Convert.ToHexString(SHA1.HashData(jpLine)).ToLowerInvariant()}");
+        Console.WriteLine(Sep);
+        Console.WriteLine(Encoding.UTF8.GetString(jpLine));
+        Console.WriteLine(Sep);
+        Console.WriteLine(langLine);
+        Console.WriteLine(Sep);
+    }
+
+    internal static void PrintUnusedLine(DeepLunaLine line)
+    {
+        Console.Write($"WARNING: Unused deepLuna line: ");
+        if (!line.Hash.IsDefault)
+        {
+            Console.WriteLine($"sha:{Convert.ToHexString(line.Hash.AsSpan()).ToLowerInvariant()}");
+        }
+        else
+        {
+            Console.WriteLine($"offset:{line.Offset}");
+        }
+        Console.WriteLine(Sep);
+        Console.WriteLine(line.Translated);
+        Console.WriteLine(Sep);
+        Console.WriteLine($"From {line.SourceFile} @ {line.SourceLineStart}");
+        Console.WriteLine($"Comment: {line.Comments}");
+        Console.WriteLine(Sep);
     }
 }

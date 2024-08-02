@@ -4,6 +4,8 @@ using LibHac.Fs.Fsa;
 using LibHac.FsSystem;
 using LibHac.Tools.FsSystem;
 using System;
+using MahoyoHDRepack.ScriptText.DeepLuna;
+using System.Text.Json;
 
 namespace MahoyoHDRepack.Verbs;
 
@@ -14,6 +16,7 @@ internal sealed class CompleteTsukiReLayeredFS
         FileInfo xciFile,
         GameLanguage secondLang,
         DirectoryInfo tsukihimatesDir,
+        FileInfo fontInfoJson,
         FileInfo? tsukihimeNsp,
         FileInfo? tsukihimatesNsp,
         DirectoryInfo outDir,
@@ -31,6 +34,22 @@ internal sealed class CompleteTsukiReLayeredFS
         using var outRomfs = new SharedRef<IFileSystem>(new LocalFileSystem(outDir.FullName));
         using var romfs = new WriteOverlayFileSystem(rawRomfs, outRomfs);
 
+        var textProcessor = new DeepLunaTextProcessor();
+
+        // first pass: inject main script
+        InjectMainScript(outRomfs.Get, romfs, tsukihimatesDir, secondLang, textProcessor);
+
+        // second pass: inject SYSMES_TEXT
+        // TODO:
+
+        // once we've loaded all text, dump the fontinfo json
+        Console.WriteLine($"Writing font info to {fontInfoJson}");
+        using (var stream = File.Create(fontInfoJson.FullName))
+        {
+            JsonSerializer.Serialize(stream, textProcessor.GetFontInfoModel(), FontInfoJsonContext.Default.FontInfo);
+        }
+
+        // the last thing that needs to be done is to extract the movies that are used by Tsukihimates
         if (tsukihimeNsp is not null && tsukihimatesNsp is not null)
         {
             using var tsukiHandle = File.OpenHandle(tsukihimeNsp.FullName, FileMode.Open, FileAccess.Read, FileShare.Read, FileOptions.RandomAccess);
@@ -46,6 +65,41 @@ internal sealed class CompleteTsukiReLayeredFS
         {
             Console.WriteLine($"WARNING: Cannot fully build the LayeredFS patch; no Tsukihimates patch found!");
         }
+    }
+
+    private static void InjectMainScript(IFileSystem outRomfs, IFileSystem romfs, DirectoryInfo tsukihimatesDir, GameLanguage targetLang, DeepLunaTextProcessor processor)
+    {
+        // first, delete any existing files from the out overlay, to ensure that we're reading from the game correctly
+        using var scriptTextPath = new LibHac.Fs.Path();
+        scriptTextPath.Initialize("/script_text.mrg".ToU8Span()).ThrowIfFailure();
+        _ = outRomfs.DeleteFile(scriptTextPath); // note: Failures are OK, if it doesn't exist, all is well
+
+        // we use separate databases for system text and main script
+        var db = new DeepLunaDatabase();
+
+        // load database from the script/ subfolder
+        var scriptDir = Path.Combine(tsukihimatesDir.FullName, "script");
+        foreach (var file in Directory.EnumerateFiles(scriptDir, "*.txt", SearchOption.AllDirectories))
+        {
+            DeepLunaParser.Parse(
+                db, processor,
+                Path.GetRelativePath(scriptDir, file),
+                File.ReadAllText(file));
+        }
+
+        Console.WriteLine($"Loaded deepLuna script with {db.Count} lines");
+
+        RepackScriptDeepLuna.RepackScriptText(targetLang, romfs, db, out var inserted, out var failed);
+
+        // print and unused
+        var unused = 0;
+        foreach (var line in db.UnusedLines)
+        {
+            RepackScriptDeepLuna.PrintUnusedLine(line);
+            unused++;
+        }
+
+        Console.WriteLine($"Injected {inserted} lines into the main script text, with {failed} failures, not using {unused}.");
     }
 
     private static void CopyMovies(IFileSystem srcFs, IFileSystem dstFs, GameLanguage targetLanguage)

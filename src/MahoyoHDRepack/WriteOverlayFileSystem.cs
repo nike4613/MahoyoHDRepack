@@ -200,7 +200,7 @@ namespace MahoyoHDRepack
                 if (result.IsFailure()) return result.Miss();
 
                 // and now we go and copy from the read file to the write file
-                const int BufSize = 0x4000;
+                const int BufSize = 0x8000;
                 var offset = 0L;
                 var buf = ArrayPool<byte>.Shared.Rent(BufSize);
                 try

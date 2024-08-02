@@ -58,20 +58,31 @@ for id,info in enumerate(fontinfo['FormatOptions']):
     baseFnt.paste()
     
   # second pass: italicize, if needed
+  didItalic = False
   if info['ItalicAmt'] != None and info['ItalicAmt'] != 0:
     # select
     baseFnt.selection.none()
+    didItalic = True
     for i in range(len(allCodepoints)):
-      baseFnt.selection.select(("more",), baseFnt.createChar(baseOffs + i))
+      glyph = baseFnt.createChar(baseOffs + i)
+    
+      (xmin, ymin, xmax, ymax) = glyph.boundingBox()
+      if info['HorizFlip']: # if we want to horizontal flip, do that BEFORE italicization to avoid kerning issues
+        glyph.transform(psMat.compose(flipTransform, psMat.translate(xmax + xmin, 0)))
+        
+      baseFnt.selection.select(("more",), glyph)
     # italicize
-    baseFnt.italicize(italic_angle=info['ItalicAmt'])
+    amt = info['ItalicAmt']
+    if info['HorizFlip']:
+      amt = -amt # if we're horizontal flipping, fix up the italic amount
+    baseFnt.italicize(italic_angle=amt)
   
   # third pass: flip and fixup
   for i in range(len(allCodepoints)):
     glyph = baseFnt.createChar(baseOffs + i)
     
     (xmin, ymin, xmax, ymax) = glyph.boundingBox()
-    if info['HorizFlip']:
+    if info['HorizFlip'] and not didItalic: # if we want to horizontal flip, do that BEFORE italicization to avoid kerning issues
       glyph.transform(psMat.compose(flipTransform, psMat.translate(xmax + xmin, 0)))
     if info['VertFlip']:
       glyph.transform(psMat.compose(vflipTransform, psMat.translate(0, ymax + (gymax - ymax) + gymin)))

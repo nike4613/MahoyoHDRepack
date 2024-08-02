@@ -250,15 +250,16 @@ internal sealed class DeepLunaTextProcessor
             var toAddFlags = (atState ^ newState) & newState;
             if (toAddFlags != 0)
             {
-                if (toAddFlags.Has(StringFormatState.Italics))
-                {
-                    _ = sb.Append("@i");
-                    atState |= StringFormatState.Italics;
-                }
+                // note: @b should be first, because I *think* the engine cares
                 if (toAddFlags.Has(StringFormatState.Backwards))
                 {
                     _ = sb.Append("@b");
                     atState |= StringFormatState.Backwards;
+                }
+                if (toAddFlags.Has(StringFormatState.Italics))
+                {
+                    _ = sb.Append("@i");
+                    atState |= StringFormatState.Italics;
                 }
                 if (toAddFlags.Has(StringFormatState.Antiqua))
                 {
@@ -329,6 +330,14 @@ internal sealed class DeepLunaTextProcessor
             {
                 // if we're requesting flipped or vertical-flipped, clear italics, because we need to handle that ourselves
                 fmtAtStates &= ~StringFormatState.Italics;
+            }
+
+            if (format.Has(StringFormatState.Flipped | StringFormatState.BackwardsItalics) && !format.Has(StringFormatState.VerticalFlipped))
+            {
+                // flipped + backwards italics is just flipped + engine italics
+                // but only when not also vertical-flipped, ofc
+                fmtAtStates |= StringFormatState.Italics;
+                format &= ~StringFormatState.BackwardsItalics;
             }
 
             SetAtFormatState(sb, ref atState, fmtAtStates);
@@ -403,23 +412,8 @@ internal sealed class DeepLunaTextProcessor
                     }
                     else
                     {
-                        if (!Rune.IsWhiteSpace(cp))
+                        if (!Rune.IsWhiteSpace(cp) && cp.Value != 0x25A0) // note: engine specially recognized 25A0, so don't replace it
                         {
-                            // note: we need to ensure we use all formats for parts of the text which aren't affected by our manual remapping
-                            // TODO: generate a list of non-ASCII chars that also need processing
-
-                            /*
-                            var fixedFormat = format;
-                            if (fixedFormat.Has(StringFormatState.BackwardsItalics | StringFormatState.Backwards))
-                            {
-                                // backwards backwards-italics turn into normal italics
-                                // (we don't want to suppress the @b though, because it physically reverses the order of the characters still)
-                                fixedFormat &= ~StringFormatState.BackwardsItalics;
-                                fixedFormat |= StringFormatState.Italics;
-                            }
-
-                            SetAtFormatState(sb, ref atState, fixedFormat);
-                            */
                             var extraIndex = extraFormatCodepoints.IndexOf(cp);
                             if (extraIndex < 0)
                             {

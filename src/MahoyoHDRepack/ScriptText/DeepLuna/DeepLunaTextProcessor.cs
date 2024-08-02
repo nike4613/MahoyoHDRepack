@@ -412,7 +412,10 @@ internal sealed class DeepLunaTextProcessor
                     }
                     else
                     {
-                        if (!Rune.IsWhiteSpace(cp) && cp.Value != 0x25A0) // note: engine specially recognized 25A0, so don't replace it
+                        if (!Rune.IsWhiteSpace(cp)
+                            && cp.Value is not 0x25A0 and not 0x2015 // note: engine specially recognizes a few chars, so don't replace those
+                            && Rune.GetUnicodeCategory(cp)
+                                is not System.Globalization.UnicodeCategory.DashPunctuation)
                         {
                             var extraIndex = extraFormatCodepoints.IndexOf(cp);
                             if (extraIndex < 0)

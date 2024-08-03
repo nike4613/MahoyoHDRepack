@@ -265,9 +265,12 @@ namespace MahoyoHDRepack
                 return readResult;
             }
 
+            var result = Utils.Normalize(path, out var normPath);
+            if (result.IsFailure()) return result.Miss();
+
             // otherwise, we can pass them into our file
             var stored = new Path.Stored();
-            var result = stored.Initialize(path);
+            result = stored.Initialize(normPath);
             if (result.IsFailure()) return result.Miss();
 
             outFile.Reset(new WriteOverlayFile(stored, this, mode, ref uniqRead.Ref, ref uniqWrite.Ref));

@@ -1,3 +1,6 @@
 [submodule "external/Ryujinx"]
 	path = external/Ryujinx
 	url = https://github.com/Ryujinx/Ryujinx.git
+[submodule "external/LegacySwitchLibraries"]
+	path = external/LegacySwitchLibraries
+	url = git@github.com:KillzXGaming/LegacySwitchLibraries.git

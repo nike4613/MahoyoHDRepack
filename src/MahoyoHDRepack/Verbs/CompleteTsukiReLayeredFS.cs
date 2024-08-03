@@ -39,8 +39,8 @@ internal sealed class CompleteTsukiReLayeredFS
         // first pass: inject main script
         InjectMainScript(outRomfs.Get, romfs, tsukihimatesDir, secondLang, textProcessor);
 
-        // second pass: inject SYSMES_TEXT
-        // TODO:
+        // second pass: inject SYSMES_TEXT (and the rest of allui)
+        InjectAllui(outRomfs.Get, romfs, tsukihimatesDir, secondLang, textProcessor);
 
         // once we've loaded all text, dump the fontinfo json
         Console.WriteLine($"Writing font info to {fontInfoJson}");
@@ -107,6 +107,33 @@ internal sealed class CompleteTsukiReLayeredFS
         }
 
         Console.WriteLine($"Injected {inserted} lines into the main script text, with {failed} failures, not using {unused}.");
+    }
+
+    private static void InjectAllui(IFileSystem outRomfs, IFileSystem romfs, DirectoryInfo tsukihimatesDir, GameLanguage targetLang, DeepLunaTextProcessor textProcessor)
+    {
+        // first, delete any existing files from the out overlay, to ensure that we're reading from the game correctly
+        using var alluiPath = new LibHac.Fs.Path();
+        alluiPath.Initialize("/w_allui.mrg".ToU8Span()).ThrowIfFailure();
+        _ = outRomfs.DeleteFile(alluiPath); // note: Failures are OK, if it doesn't exist, all is well
+        alluiPath.InitializeWithNormalization("/w_allui".ToU8Span().Value).ThrowIfFailure();
+        alluiPath.Normalize(default).ThrowIfFailure();
+
+        // now reload system strings
+        var db = new DeepLunaDatabase();
+        DeepLunaParser.Parse(
+            db, textProcessor,
+            "system_strings/sysmes_text.en",
+            File.ReadAllText(Path.Combine(tsukihimatesDir.FullName, "system_strings", "sysmes_text.en")));
+
+        // open allui
+        MrgFileSystem.Read(romfs, alluiPath, out var outAllui).ThrowIfFailure();
+        Helpers.Assert(outAllui is not null);
+        using var allui = outAllui;
+
+        using (UniqueRef<IFile> uniqSysmesTxt = default)
+        {
+            allui.OpenFile(ref uniqSysmesTxt.Ref, "/SYSMES_TEXT_ML.DAT".ToU8Span(), LibHac.Fs.OpenMode.Read).ThrowIfFailure();
+        }
     }
 
     private static void CopyMovies(IFileSystem srcFs, IFileSystem dstFs, GameLanguage targetLanguage)

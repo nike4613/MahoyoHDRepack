@@ -147,11 +147,7 @@ public abstract class CopyOnWriteFileSystem : IFileSystem
             entry.CowStorage.CopyTo(Storage.Slice(entry.NewOffset, entry.NewSize));
         }
 
-        // next, we need to write the archive header info
-        result = WriteHeader(Storage, fileDataOffset);
-        if (result.IsFailure()) return result.Miss();
-
-        // and we finally clean up all of the entries, updating them with new COW spans into the underlying file
+        // clean up all of the entries, updating them with new COW spans into the underlying file
         for (var i = 0; i < numEntries; i++)
         {
             ref var entry = ref GetEntry(i);
@@ -170,6 +166,11 @@ public abstract class CopyOnWriteFileSystem : IFileSystem
                 _ = GetStorageForEntry(ref entry);
             }
         }
+
+        // finally, we need to write the archive header info
+        // note: this should come last, because some COW filesystems rely on being able to read the underlying files
+        result = WriteHeader(Storage, fileDataOffset);
+        if (result.IsFailure()) return result.Miss();
 
         return Storage.Flush();
     }

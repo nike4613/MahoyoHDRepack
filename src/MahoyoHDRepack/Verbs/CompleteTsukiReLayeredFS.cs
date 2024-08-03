@@ -7,6 +7,8 @@ using System;
 using MahoyoHDRepack.ScriptText.DeepLuna;
 using System.Text.Json;
 using MahoyoHDRepack.ScriptText;
+using CommunityToolkit.Diagnostics;
+using System.Text;
 
 namespace MahoyoHDRepack.Verbs;
 
@@ -99,7 +101,7 @@ internal sealed class CompleteTsukiReLayeredFS
 
         RepackScriptDeepLuna.RepackScriptText(targetLang, romfs, db, out var inserted, out var failed);
 
-        // print and unused
+        // print unused
         var unused = 0;
         foreach (var line in db.UnusedLines)
         {
@@ -110,11 +112,15 @@ internal sealed class CompleteTsukiReLayeredFS
         Console.WriteLine($"Injected {inserted} lines into the main script text, with {failed} failures, not using {unused}.");
     }
 
-    private static void InjectAllui(IFileSystem outRomfs, IFileSystem romfs, DirectoryInfo tsukihimatesDir, GameLanguage targetLang, DeepLunaTextProcessor textProcessor)
+    private static void InjectAllui(IFileSystem outRomfs, IFileSystem romfs, DirectoryInfo tsukihimatesDir, GameLanguage targetLanguage, DeepLunaTextProcessor textProcessor)
     {
         // first, delete any existing files from the out overlay, to ensure that we're reading from the game correctly
         using var alluiPath = new LibHac.Fs.Path();
         alluiPath.Initialize("/w_allui.mrg".ToU8Span()).ThrowIfFailure();
+        _ = outRomfs.DeleteFile(alluiPath); // note: Failures are OK, if it doesn't exist, all is well
+        alluiPath.Initialize("/w_allui.hed".ToU8Span()).ThrowIfFailure();
+        _ = outRomfs.DeleteFile(alluiPath); // note: Failures are OK, if it doesn't exist, all is well
+        alluiPath.Initialize("/w_allui.nam".ToU8Span()).ThrowIfFailure();
         _ = outRomfs.DeleteFile(alluiPath); // note: Failures are OK, if it doesn't exist, all is well
         alluiPath.InitializeWithNormalization("/w_allui".ToU8Span().Value).ThrowIfFailure();
         alluiPath.Normalize(default).ThrowIfFailure();
@@ -136,7 +142,51 @@ internal sealed class CompleteTsukiReLayeredFS
             allui.OpenFile(ref uniqSysmesTxt.Ref, "/SYSMES_TEXT_ML.DAT".ToU8Span(), LibHac.Fs.OpenMode.ReadWrite).ThrowIfFailure();
 
             var smText = SysmesText.ReadFromFile(uniqSysmesTxt.Get);
+
+            // insert the text
+            var jpLang = smText.GetForLanguage(GameLanguage.JP);
+            Helpers.Assert(jpLang is not null);
+            var targetLang = smText.GetForLanguage(targetLanguage);
+            if (targetLang is null) ThrowHelper.ThrowInvalidOperationException("Target language is not supported");
+
+            var inserted = 0;
+            var failed = 0;
+            for (var i = 0; i < jpLang.Length; i++)
+            {
+                // note: we never want to match against offset
+                var jpSpan = jpLang[i].AsSpan();
+                if (db.TryLookupLine(jpSpan, -1, out var line))
+                {
+                    if (line.Translated is not null)
+                    {
+                        targetLang[i] = [.. Encoding.UTF8.GetBytes(line.Translated)];
+                    }
+
+                    line.Used = true;
+                    inserted++;
+                }
+                else
+                {
+                    RepackScriptDeepLuna.PrintMissingLine(Encoding.UTF8.GetString(targetLang[i].AsSpan()), jpSpan);
+                    failed++;
+                }
+            }
+
+            var unused = 0;
+            foreach (var line in db.UnusedLines)
+            {
+                RepackScriptDeepLuna.PrintUnusedLine(line);
+                unused++;
+            }
+
+            smText.WriteToFile(uniqSysmesTxt.Get);
+            uniqSysmesTxt.Get.Flush().ThrowIfFailure();
+
+            Console.WriteLine($"Injected {inserted} lines into SYSMES_TEXT_ML.DAT, with {failed} failures, not using {unused}.");
         }
+
+        // flush the filesystem
+        allui.Flush().ThrowIfFailure();
     }
 
     private static void CopyMovies(IFileSystem srcFs, IFileSystem dstFs, GameLanguage targetLanguage)

@@ -132,7 +132,7 @@ internal sealed class CompleteTsukiReLayeredFS
 
         using (UniqueRef<IFile> uniqSysmesTxt = default)
         {
-            allui.OpenFile(ref uniqSysmesTxt.Ref, "/SYSMES_TEXT_ML.DAT".ToU8Span(), LibHac.Fs.OpenMode.Read).ThrowIfFailure();
+            allui.OpenFile(ref uniqSysmesTxt.Ref, "/SYSMES_TEXT_ML.DAT".ToU8Span(), LibHac.Fs.OpenMode.ReadWrite).ThrowIfFailure();
         }
     }
 

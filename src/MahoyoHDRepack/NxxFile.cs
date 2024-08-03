@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using CommunityToolkit.Diagnostics;
 using ICSharpCode.SharpZipLib.GZip;
 using ICSharpCode.SharpZipLib.Zip.Compression;
 using ICSharpCode.SharpZipLib.Zip.Compression.Streams;
@@ -16,12 +17,13 @@ namespace MahoyoHDRepack
 {
     internal sealed class NxxFile : IFile
     {
+        private const int HdrSize = 16;
+
         public static IFile TryCreate(IFile file)
         {
             var result = file.GetSize(out var size);
             if (result.IsFailure()) return file;
 
-            const int HdrSize = 16;
             if (size < HdrSize) return file;
 
             Span<byte> hdr = stackalloc byte[HdrSize];
@@ -30,8 +32,8 @@ namespace MahoyoHDRepack
 
             if (hdr[0..4].SequenceEqual(FileScanner.NxCx))
             {
-                var len = MemoryMarshal.Read<uint>(hdr[4..]);
-                var zlen = MemoryMarshal.Read<uint>(hdr[8..]);
+                var len = MemoryMarshal.Read<LEUInt32>(hdr[4..]);
+                var zlen = MemoryMarshal.Read<LEUInt32>(hdr[8..]);
 
                 var dataStream = new PartialFile(file, HdrSize, zlen).AsStream(OpenMode.Read, false);
                 var inflater = new Inflater(false);
@@ -41,8 +43,8 @@ namespace MahoyoHDRepack
 
             if (hdr[0..4].SequenceEqual(FileScanner.NxGx))
             {
-                var len = MemoryMarshal.Read<uint>(hdr[4..]);
-                var zlen = MemoryMarshal.Read<uint>(hdr[8..]);
+                var len = MemoryMarshal.Read<LEUInt32>(hdr[4..]);
+                var zlen = MemoryMarshal.Read<LEUInt32>(hdr[8..]);
 
                 var dataStream = new PartialFile(file, HdrSize, zlen).AsStream(OpenMode.Read, false);
                 var gzipStream = new GZipInputStream(dataStream, 16384);
@@ -50,6 +52,26 @@ namespace MahoyoHDRepack
             }
 
             return file;
+        }
+
+        public static uint GetUncompressedSize(IFile file)
+        {
+            file.GetSize(out var size).ThrowIfFailure();
+            if (size < HdrSize) ThrowHelper.ThrowInvalidOperationException("File too small to be compressed");
+
+            Span<byte> hdr = stackalloc byte[HdrSize];
+            file.Read(out var bytesRead, 0, hdr).ThrowIfFailure();
+            if (bytesRead < HdrSize) ThrowHelper.ThrowInvalidOperationException("Partial read");
+
+            if (hdr[0..4].SequenceEqual(FileScanner.NxCx) || hdr[0..4].SequenceEqual(FileScanner.NxGx))
+            {
+                return MemoryMarshal.Read<LEUInt32>(hdr[4..]);
+            }
+            else
+            {
+                ThrowHelper.ThrowInvalidOperationException("Not an Nxx compressed file");
+                return 0;
+            }
         }
 
         private readonly Stream decompStream;

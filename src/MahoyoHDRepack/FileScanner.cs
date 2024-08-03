@@ -50,6 +50,16 @@ internal static class FileScanner
             _ => file
         };
     }
+
+    public static long GetUncompressedSize(IFile file)
+    {
+        file.GetSize(out var fileSize).ThrowIfFailure();
+        return ProbeForFileType(file) switch
+        {
+            KnownFileTypes.Nxx => NxxFile.GetUncompressedSize(file),
+            _ => fileSize
+        };
+    }
 }
 
 public enum KnownFileTypes

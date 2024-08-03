@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Immutable;
+using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -7,12 +8,19 @@ using LibHac;
 using LibHac.Common;
 using LibHac.Fs;
 using LibHac.Fs.Fsa;
+using LibHac.Tools.FsSystem;
 
 namespace MahoyoHDRepack
 {
-    internal class MrgFileSystem : IFileSystem
+    internal class MrgFileSystem : CopyOnWriteFileSystem
     {
-        private readonly record struct HedEntry(long Offset, long Size);
+        private struct HedEntry(long Offset, long Size)
+        {
+            public CowEntry Entry = new() { Size = (uint)Size, Offset = (uint)Offset };
+
+            public long Offset => Entry.Offset;
+            public long Size => Entry.Size;
+        }
 
         [StructLayout(LayoutKind.Sequential, Size = Size)]
         private readonly struct Name : IComparable<Name>
@@ -65,10 +73,14 @@ namespace MahoyoHDRepack
         private readonly IFile mrg;
         private readonly IFile hed;
         private readonly IFile? nam;
-        private readonly ReadOnlyMemory<HedEntry> files;
+        private readonly Memory<HedEntry> files;
         private readonly ReadOnlyMemory<Name> names;
 
-        private MrgFileSystem(SharedRef<IFileSystem> sharedFsRef, IFile mrg, IFile hed, IFile? nam, ReadOnlyMemory<HedEntry> files, ReadOnlyMemory<Name> names)
+        private MrgFileSystem(SharedRef<IFileSystem> sharedFsRef,
+            IFile mrg, IFile hed, IFile? nam,
+            SharedRef<IStorage> storageRef, IStorage storage,
+            Memory<HedEntry> files, ReadOnlyMemory<Name> names)
+            : base(storageRef, storage)
         {
             this.sharedFsRef = sharedFsRef;
             this.mrg = mrg;
@@ -96,6 +108,9 @@ namespace MahoyoHDRepack
             return ReadCore(fs.Get, fs, path, out mrgFs);
         }
 
+        private const int HedEntrySize = 8;
+        private const uint SectorSize = 0x800;
+
         private static Result ReadCore(IFileSystem fs, SharedRef<IFileSystem> fsSharedRef, in Path path, out MrgFileSystem? mrgFs)
         {
             mrgFs = null;
@@ -104,7 +119,7 @@ namespace MahoyoHDRepack
             Span<byte> pathbuf = stackalloc byte[pathBase.Length + 4];
             pathBase.CopyTo(pathbuf);
 
-            scoped var curPath = new Path();
+            using scoped var curPath = new Path();
 
             // load MRG file
             ".mrg"u8.CopyTo(pathbuf.Slice(pathBase.Length));
@@ -133,14 +148,11 @@ namespace MahoyoHDRepack
             result = fs.OpenFile(ref uniqNamFile.Ref, in curPath, OpenMode.Read);
             if (result.IsFailure()) uniqNamFile.Reset(null);
 
-            const int HedEntrySize = 8;
             Span<byte> readBuf = stackalloc byte[Math.Max(Name.Size, HedEntrySize)];
 
             // now lets read the the HED file
             Memory<HedEntry> hedEntries;
             {
-                const uint SectorSize = 0x800;
-
                 result = uniqHedFile.Get.GetSize(out var length);
                 if (result.IsFailure()) return result.Miss();
                 if (length % HedEntrySize != 0)
@@ -173,6 +185,8 @@ namespace MahoyoHDRepack
                     offset *= SectorSize;
 
                     var size = SectorSize * MemoryMarshal.Read<LEUInt16>(readBuf[4..]).Value;
+
+                    // note: the last u16 is the size of the file, uncompressed
 
                     entries[i] = new(offset, size);
                 }
@@ -215,8 +229,57 @@ namespace MahoyoHDRepack
                 names.Span.Sort(hedEntries.Span);
             }
 
-            mrgFs = new(SharedRef<IFileSystem>.CreateCopy(fsSharedRef), uniqMrgFile.Release(), uniqHedFile.Release(), uniqNamFile.Release(), hedEntries, names);
+            var mrgFile = uniqMrgFile.Release();
+
+            mrgFs = new(
+                SharedRef<IFileSystem>.CreateCopy(fsSharedRef),
+                mrgFile, uniqHedFile.Release(), uniqNamFile.Release(),
+                default, mrgFile.AsStorage(),
+                hedEntries, names);
             return Result.Success;
+        }
+
+        protected override int GetEntryCount() => files.Length;
+        protected override uint GetDataOffset() => 0;
+        protected override uint AlignOffset(uint offset) => (offset + (SectorSize - 1)) & ~(SectorSize - 1);
+        protected override ref CowEntry GetEntry(int i) => ref files.Span[i].Entry;
+        protected override Result WriteHeader(IStorage storage, uint dataOffset)
+        {
+            // note: while the main file doesn't have a header, we still want to write the hed
+
+            // also note: we don't support adding or removing files, so the HED length 
+            Result result;
+            var entrySpan = files.Span;
+            Span<byte> data = stackalloc byte[HedEntrySize];
+            for (var i = 0; i < entrySpan.Length; i++)
+            {
+                var hedOffset = HedEntrySize * i;
+
+                ref var entry = ref GetEntry(i);
+
+                var offset = entry.NewOffset;
+                var size = entry.NewSize;
+
+                var uncompressedSize = FileScanner.GetUncompressedSize(GetStorageForEntry(ref entry).AsFile(OpenMode.Read));
+
+                var offsetInSectors = offset / SectorSize;
+                var sizeInSectors = size / SectorSize;
+                var uncompressedSizeInSectors = uncompressedSize / SectorSize;
+                MemoryMarshal.Write<LEUInt32>(data, offsetInSectors);
+                MemoryMarshal.Write<LEUInt16>(data[4..], (ushort)sizeInSectors);
+                MemoryMarshal.Write<LEUInt16>(data[6..], (ushort)uncompressedSizeInSectors);
+
+                result = hed.Write(hedOffset, data);
+                if (result.IsFailure()) return result.Miss();
+            }
+
+            data.Fill(0xff);
+            result = hed.Write(HedEntrySize * entrySpan.Length, data);
+            if (result.IsFailure()) return result.Miss();
+            result = hed.Write(HedEntrySize * (entrySpan.Length + 1), data);
+            if (result.IsFailure()) return result.Miss();
+
+            return Result.Success; // note: the main file does not have a header
         }
 
         private static Result PathToName(ReadOnlySpan<byte> pathStr, out Name name)
@@ -290,16 +353,10 @@ namespace MahoyoHDRepack
 
         protected override Result DoOpenFile(ref UniqueRef<IFile> outFile, in Path path, OpenMode mode)
         {
-            if (mode is not OpenMode.Read)
-            {
-                return ResultFs.InvalidOperationForOpenMode.Value;
-            }
-
             var result = GetIndex(path, out var idx);
             if (result.IsFailure()) return result.Miss();
 
-            var entry = files.Span[idx];
-            outFile.Reset(FileScanner.TryGetDecompressedFile(new PartialFile(mrg, entry.Offset, entry.Size)));
+            outFile.Reset(GetStorageForEntry(ref GetEntry(idx)).AsFile(mode));
             return Result.Success;
         }
 
@@ -343,7 +400,7 @@ namespace MahoyoHDRepack
 
                     if (fs.names.IsEmpty)
                     {
-                        var name = (baseIdx + i).ToString("x16");
+                        var name = (baseIdx + i).ToString("x16", CultureInfo.InvariantCulture);
                         _ = Encoding.UTF8.GetBytes(name, nameSpan);
                     }
                     else

@@ -91,7 +91,7 @@ if ($null -ne $TsukiPatch) {
     $romfsCompleteArgs += @("--tsukihimates-nsp", $TsukiPatch);
 }
 &$dotnet run --project "src/MahoyoHDRepack/MahoyoHDRepack.csproj" -c Release -f $TFM -- `
-    repack-script-deepluna --xci $Xci `
+    rebuild-tsukire-en --xci $Xci `
     -l EN -o $romfs `
     --font-info $fontinfo `
     --tsukihimates-dir $Tsukihimates `

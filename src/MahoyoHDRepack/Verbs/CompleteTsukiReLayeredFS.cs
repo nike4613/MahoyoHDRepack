@@ -6,6 +6,7 @@ using LibHac.Tools.FsSystem;
 using System;
 using MahoyoHDRepack.ScriptText.DeepLuna;
 using System.Text.Json;
+using MahoyoHDRepack.ScriptText;
 
 namespace MahoyoHDRepack.Verbs;
 
@@ -133,6 +134,8 @@ internal sealed class CompleteTsukiReLayeredFS
         using (UniqueRef<IFile> uniqSysmesTxt = default)
         {
             allui.OpenFile(ref uniqSysmesTxt.Ref, "/SYSMES_TEXT_ML.DAT".ToU8Span(), LibHac.Fs.OpenMode.ReadWrite).ThrowIfFailure();
+
+            var smText = SysmesText.ReadFromFile(uniqSysmesTxt.Get);
         }
     }
 

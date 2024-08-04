@@ -11,6 +11,18 @@ if len(sys.argv) < 4:
 baseFontFile = sys.argv[1]
 fontinfoJson = sys.argv[2]
 outFontFile = sys.argv[3]
+fontMode = None
+if len(sys.argv) >= 5:
+  fontMode = int(sys.argv[4])
+antiquaFontPath = None
+if len(sys.argv) >= 6:
+  antiquaFontPath = sys.argv[5]
+antiquaGlyphScale = 1.0
+if len(sys.argv) >= 7:
+  antiquaGlyphScale = float(sys.argv[6])
+antiquaWeightChange = 0
+if len(sys.argv) >= 8:
+  antiquaWeightChange = float(sys.argv[7])
 
 fontinfo = None
 with open(fontinfoJson) as f:
@@ -25,37 +37,79 @@ flipTransform = psMat.scale(-1,1)
 vflipTransform = psMat.scale(1,-1)
 
 baseFnt = fontforge.open(baseFontFile, ("fstypepermitted", "hidewindow", "alltables"))
+antiqFnt = fontforge.open(antiquaFontPath, ("fstypepermitted", "hidewindow", "alltables")) if antiquaFontPath != None else None
+if antiqFnt != None and antiquaWeightChange != 0:
+  antiqFnt.changeWeight(antiquaWeightChange)
 
 allCodepoints = [*range(UNI_MODPOINTS_MIN, UNI_MODPOINTS_MAX + 1), *fontinfo['ExtraCodepoints']]
 
-print(allCodepoints)
+print("mode", fontMode)
 
-# first pass, find maximum glyph bounds
-(gxmin, gymin, gxmax, gymax) = (math.inf, math.inf, -math.inf, -math.inf)
-for cloneCp in allCodepoints:
-  glyph = baseFnt.createChar(cloneCp)
-  (xmin, ymin, xmax, ymax) = glyph.boundingBox()
+
+(gbxmin, gbymin, gbxmax, gbymax) = (math.inf, math.inf, -math.inf, -math.inf)
+(gaxmin, gaymin, gaxmax, gaymax) = (math.inf, math.inf, -math.inf, -math.inf)
+for i,cp in enumerate(allCodepoints):
+  bglyph = baseFnt.createChar(cp)
+  aglyph = antiqFnt.createChar(cp)
   
-  gxmin = min(gxmin, xmin)
-  gymin = min(gymin, ymin)
-  gxmax = max(gxmax, xmax)
-  gymax = max(gymax, ymax)
+  (bxmin, bymin, bxmax, bymax) = bglyph.boundingBox()
+  (axmin, aymin, axmax, aymax) = aglyph.boundingBox()
+  
+  gbxmin = min(gbxmin, bxmin)
+  gbymin = min(gbymin, bymin)
+  gbxmax = max(gbxmax, bxmax)
+  gbymax = max(gbymax, bymax)
+  
+  gaxmin = min(gaxmin, axmin)
+  gaymin = min(gaymin, aymin)
+  gaxmax = max(gaxmax, axmax)
+  gaymax = max(gaymax, aymax)
+
+antiqScaleFac = max(gbxmax - gbxmin, gbymax - gbymin) / max(gaxmax - gaxmin, gaymax - gaymin);
+antiqScaleFac *= antiquaGlyphScale;
+print(antiqScaleFac)
+antiqScale = psMat.scale(antiqScaleFac)
 
 # then we can do our work
-for id,info in enumerate(fontinfo['FormatOptions']):
+for id,fmtinfo in enumerate(fontinfo['FormatOptions']):
   baseOffs = UNI_PRIVATEUSE + (id * UNI_RANGE_SIZE)
   
-  print("region",id,baseOffs,info)
+  info = fmtinfo['Formats']
+  modes = fmtinfo['FontModes']
 
-  # first pass: copy glyphs
+  print("region",id,baseOffs,fmtinfo)
+  
+  if fontMode != None and fontMode not in modes:
+    continue # a fontMode was specified, and this format isn't used in that font mode
+
+  srcFnt = baseFnt
+  glyScale = psMat.identity()
+  if info['Antiqua']:
+    if antiqFnt != None:
+      srcFnt = antiqFnt
+      glyScale = antiqScale
+    else:
+      print("WARNING: No Antiqua font provided, but one was needed! Using normal glyphs instead.")  
+        
+  # first pass, find maximum glyph bounds and copy glyphs
+  (gxmin, gymin, gxmax, gymax) = (math.inf, math.inf, -math.inf, -math.inf)
   for i,cp in enumerate(allCodepoints):
-    glyph = baseFnt.createChar(cp)
+    glyph = srcFnt.createChar(cp)
     tgtGlyph = baseFnt.createChar(baseOffs + i)
     
-    baseFnt.selection.select(glyph)
-    baseFnt.copy()
+    srcFnt.selection.select(glyph)
+    srcFnt.copy()
     baseFnt.selection.select(tgtGlyph)
     baseFnt.paste()
+    
+    # rescale the copied glyph to be more reasonable
+    tgtGlyph.transform(glyScale)
+
+    (xmin, ymin, xmax, ymax) = tgtGlyph.boundingBox()
+    gxmin = min(gxmin, xmin)
+    gymin = min(gymin, ymin)
+    gxmax = max(gxmax, xmax)
+    gymax = max(gymax, ymax)
     
   # second pass: italicize, if needed
   didItalic = False

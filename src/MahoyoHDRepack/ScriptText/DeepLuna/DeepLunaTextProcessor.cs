@@ -24,15 +24,16 @@ internal sealed class DeepLunaTextProcessor
         None = 0,
         Italics = 1 << 0,
         Backwards = 1 << 1,
-        Antiqua = 1 << 2,
-        BackwardsItalics = 1 << 3,
-        Flipped = 1 << 4,
-        VerticalFlipped = 1 << 5,
+        EngineAntiqua = 1 << 2,
+        DeepLunaAntiqua = 1 << 3,
+        BackwardsItalics = 1 << 4,
+        Flipped = 1 << 5,
+        VerticalFlipped = 1 << 6,
 
         SimultaneousMark = 1 << 16,
         InsertAtK = 1 << 17,
 
-        AtStateMask = Italics | Backwards | Antiqua,
+        AtStateMask = Italics | Backwards | EngineAntiqua,
         OneSegmentOnlyMask = SimultaneousMark | InsertAtK,
         NonstandardFormatMask = ~AtStateMask & ~OneSegmentOnlyMask,
     }
@@ -163,7 +164,7 @@ internal sealed class DeepLunaTextProcessor
                                 break;
                             case "g":
                                 // antiqua
-                                formatMask = StringFormatState.Antiqua;
+                                formatMask = StringFormatState.DeepLunaAntiqua;
                                 break;
                             case "flip_vertical":
                                 // vertical flip
@@ -209,7 +210,8 @@ internal sealed class DeepLunaTextProcessor
     public record struct SpecialFormatOpts(
         int ItalicAmt,
         bool HorizFlip,
-        bool VertFlip
+        bool VertFlip,
+        bool Antiqua
         );
 
     private static SpecialFormatOpts GetFormatOptsForFormat(StringFormatState formatState)
@@ -223,10 +225,18 @@ internal sealed class DeepLunaTextProcessor
                 _ => 0
             },
             formatState.Has(StringFormatState.Flipped),
-            formatState.Has(StringFormatState.VerticalFlipped));
+            formatState.Has(StringFormatState.VerticalFlipped),
+            formatState.Has(StringFormatState.DeepLunaAntiqua));
     }
 
-    private readonly Dictionary<SpecialFormatOpts, int> specialFormatOffsetIndex = new();
+    public sealed class FormatOptsData(SpecialFormatOpts Formats, int Index)
+    {
+        public SpecialFormatOpts Formats { get; } = Formats;
+        public int Index { get; } = Index;
+        public HashSet<int> FontModes { get; } = new();
+    }
+
+    private readonly Dictionary<SpecialFormatOpts, FormatOptsData> specialFormatOffsetIndex = new();
     private readonly List<Rune> extraFormatCodepoints = new();
 
     private string BuildFinalLine(StringBuilder sb, List<(StringFormatState Format, string Text)> segments, bool shouldCenter, bool shouldRightAlign)
@@ -261,10 +271,10 @@ internal sealed class DeepLunaTextProcessor
                     _ = sb.Append("@i");
                     atState |= StringFormatState.Italics;
                 }
-                if (toAddFlags.Has(StringFormatState.Antiqua))
+                if (toAddFlags.Has(StringFormatState.EngineAntiqua))
                 {
                     _ = sb.Append("@g");
-                    atState |= StringFormatState.Antiqua;
+                    atState |= StringFormatState.EngineAntiqua;
                 }
             }
         }
@@ -346,15 +356,17 @@ internal sealed class DeepLunaTextProcessor
 
             // if we have other flags, determine the correct codepoint offset index
             var otherFlags = format & StringFormatState.NonstandardFormatMask;
-            var specialFormattingKind = format & ~(StringFormatState.Antiqua | StringFormatState.Backwards);
+            var specialFormattingKind = format & ~(StringFormatState.EngineAntiqua | StringFormatState.Backwards);
             if (otherFlags != 0)
             {
                 var stateOpts = GetFormatOptsForFormat(specialFormattingKind);
-                if (!specialFormatOffsetIndex.TryGetValue(stateOpts, out var idx))
+                if (!specialFormatOffsetIndex.TryGetValue(stateOpts, out var optsData))
                 {
-                    specialFormatOffsetIndex.Add(stateOpts, idx = specialFormatOffsetIndex.Count);
+                    optsData = new(stateOpts, specialFormatOffsetIndex.Count);
+                    specialFormatOffsetIndex.Add(stateOpts, optsData);
                 }
-                offsetIndex = idx;
+                _ = optsData.FontModes.Add(format.Has(StringFormatState.EngineAntiqua) ? 1 : 0);
+                offsetIndex = optsData.Index;
             }
 
             if (offsetIndex == -1)
@@ -382,6 +394,9 @@ internal sealed class DeepLunaTextProcessor
             else
             {
                 // we need to offset, do that
+                // TODO: When doing offsets, we need to emit manual line breaks, becuase the game's line breaker doesn't recognize our offset
+                //       codepoints as being characters making up words. Oops.
+
                 var segmentBase = PrivateUseOffset + (RangeSize * offsetIndex);
                 var asciiOfset = segmentBase - FirstModifiedCodepoint;
 
@@ -403,6 +418,13 @@ internal sealed class DeepLunaTextProcessor
                         {
                             cp = new Rune(text[--j], c);
                         }
+                    }
+
+                    if (cp.Value is '^')
+                    {
+                        // '^' is specially interpreted by the game as a newline
+                        _ = sb.Append(null, $"{cp}");
+                        continue;
                     }
 
                     if (cp.Value is >= FirstModifiedCodepoint and <= LastModifiedCodepoint)
@@ -452,7 +474,7 @@ internal sealed class DeepLunaTextProcessor
         public required int RangeSize { get; init; }
         public required int AutoMinCodepoint { get; init; }
         public required int AutoMaxCodepoint { get; init; }
-        public required IEnumerable<SpecialFormatOpts> FormatOptions { get; init; }
+        public required IEnumerable<FormatOptsData> FormatOptions { get; init; }
         public required IEnumerable<int> ExtraCodepoints { get; init; }
     }
 
@@ -463,7 +485,7 @@ internal sealed class DeepLunaTextProcessor
             RangeSize = RangeSize,
             AutoMinCodepoint = FirstModifiedCodepoint,
             AutoMaxCodepoint = LastModifiedCodepoint,
-            FormatOptions = specialFormatOffsetIndex.OrderBy(kvp => kvp.Value).Select(kvp => kvp.Key),
+            FormatOptions = specialFormatOffsetIndex.Values.OrderBy(d => d.Index),
             ExtraCodepoints = extraFormatCodepoints.Select(rune => rune.Value)
         };
     }

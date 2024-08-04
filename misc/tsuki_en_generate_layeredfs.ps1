@@ -72,11 +72,11 @@ Push-Location $RepoRoot
 
 try {
 
-Remove-Item -Recurse -Force $PatchDir;
-New-Item -ItemType Directory $PatchDir;
+Remove-Item -Recurse -Force $PatchDir | Out-Null;
+New-Item -ItemType Directory $PatchDir | Out-Null;
 
 $tmp = Join-Path $PatchDir ".tmp";
-New-Item -ItemType Directory $tmp;
+New-Item -ItemType Directory $tmp | Out-Null;
 
 $fontinfo = Join-Path $tmp "fontinfo.json";
 
@@ -96,33 +96,44 @@ if ($null -ne $TsukiPatch) {
     --font-info $fontinfo `
     --tsukihimates-dir $Tsukihimates `
     @romfsCompleteArgs;
+if (-not $?) { Write-Error "Failed to generate RomFS!"; }
 
 # Then, lets extract and fix our fonts
 $fontPaths = @(
-    "en/HelveticaNeueLTGEO-55Roman.otf",
-    "en2/DemosNextPro-Regular.otf",
-    "en3/FOT-SeuratPro-M.otf"
+    @("en/HelveticaNeueLTGEO-55Roman.otf", 0),
+    @("en2/DemosNextPro-Regular.otf", 1)
+    #@("en3/FOT-SeuratPro-M.otf", 2)
 );
+$antiquaInsert = "misc/tex-gyre-chorus.regular.otf";
+$antiquaScale = 1.5;
+$antiquaWeightAdjust = 0;
 
-foreach ($font in $fontPaths) {
+foreach ($fonta in $fontPaths) {
+    $font = $fonta[0];
+    $mode = $fonta[1];
     # make sure the directory is present in the tmp dir
-    New-Item -ItemType Directory -Force (Join-Path $tmp (Split-Path -Parent $font));
+    New-Item -ItemType Directory -Force (Join-Path $tmp (Split-Path -Parent $font)) | Out-Null;
     # extract the font
     &$dotnet run --project "src/MahoyoHDRepack/MahoyoHDRepack.csproj" -c Release -f $TFM --no-build -- `
         extract --xci $Xci "/$font" (Join-Path $tmp $font);
+    if (-not $?) { Write-Error "Failed to extract font $font (mode $mode)!"; }
     # make sure the directory is present in the overlayfs
-    New-Item -ItemType Directory -Force (Join-Path $romfs (Split-Path -Parent $font));
+    New-Item -ItemType Directory -Force (Join-Path $romfs (Split-Path -Parent $font)) | Out-Null;
     # use fontforge to update the fonts, and write them into the romfs
-    &$fontforge -lang=py -script "misc/generate_font_variations.py" `
+    &$fontforge -quiet -lang=py -script "misc/generate_font_variations.py" `
         (Join-Path $tmp $font) `
         $fontinfo `
-        (Join-Path $romfs $font);
+        (Join-Path $romfs $font) `
+        $mode `
+        $antiquaInsert $antiquaScale $antiquaWeightAdjust;
+    # Note about these last 
+    if (-not $?) { Write-Error "Failed to patch font $font!"; }
 }
 
 # Finally, copy in the exefs patches
 $exefs = (Join-Path $PatchDir "exefs");
-New-Item -ItemType Directory $exefs;
-Copy-Item "misc/tsukire_en_enable_ruby.pchtxt" -Destination $exefs;
+New-Item -ItemType Directory $exefs | Out-Null;
+Copy-Item "misc/tsukire_en_enable_ruby.pchtxt" -Destination $exefs | Out-Null;
 
 # Clean up temp dir
 Remove-Item -Recurse -Force $tmp;

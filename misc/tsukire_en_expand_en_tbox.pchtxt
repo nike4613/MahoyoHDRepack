@@ -1,0 +1,29 @@
+@nsobid-9AFB5D182FCEF75DFDFC20183A60CD3F80FB767B
+
+@flag offset_shift 0x100
+@flag print_values
+
+// ATTEMPT TO REMOVE SPECIALIZATION OF ENGLISH LANGUAGE
+
+// Hard-code a check for langId == EN to return false
+// Original: 7f 06 00 71    cmp w19,#0x1
+// Modified: 7f 42 00 71    cmp w19,#0x10 // impossible condition, because there are only 4 languages
+@enabled
+//0002c058    7f420071
+@disabled
+
+// Make the function I'm calling "GetIsEnglish" return false unconditionally
+// Original: ff 83 00 d1    sub sp,sp,#0x20
+//           f3 4f 01 a9    stp x30,x19,[sp, #0x10]
+// Modified: e0 03 1f aa    mov x0,xzr
+//           c0 03 5f d6    ret
+@enabled
+//0002f100    e0031faac0035fd6
+@disabled
+
+// Force textbox width to be set to the narrower variant
+// Original: 68 13 9a 1a    csel w8,w27,w26,ne
+// Modified: 48 13 9a 1a    csel w8,w26,w26,ne
+@enabled
+//0008124c    48139a1a
+@disabled

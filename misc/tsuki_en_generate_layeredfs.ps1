@@ -133,7 +133,8 @@ foreach ($fonta in $fontPaths) {
 # Finally, copy in the exefs patches
 $exefs = (Join-Path $PatchDir "exefs");
 New-Item -ItemType Directory $exefs | Out-Null;
-Copy-Item "misc/tsukire_en_enable_ruby.pchtxt" -Destination $exefs | Out-Null;
+
+Get-ChildItem "misc/" -Filter "*.pchtxt" | Copy-Item -Destination $exefs | Out-Null;
 
 # Clean up temp dir
 Remove-Item -Recurse -Force $tmp;

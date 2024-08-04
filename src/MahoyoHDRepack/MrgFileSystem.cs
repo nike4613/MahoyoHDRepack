@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Immutable;
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -23,7 +24,7 @@ namespace MahoyoHDRepack
         }
 
         [StructLayout(LayoutKind.Sequential, Size = Size)]
-        private readonly struct Name : IComparable<Name>
+        private readonly struct Name : IComparable<Name>, IEquatable<Name>
         {
             private readonly ulong w0;
             private readonly ulong w1;
@@ -67,6 +68,10 @@ namespace MahoyoHDRepack
                 span[31] = 0x0a;
                 name.CopyTo(span);
             }
+
+            public bool Equals(Name other) => AsU8().SequenceEqual(other.AsU8());
+            public override bool Equals([NotNullWhen(true)] object? obj) => obj is Name n && Equals(n);
+            public override int GetHashCode() => HashCode.Combine(w0, w1, w2, w3);
         }
 
         private readonly SharedRef<IFileSystem> sharedFsRef;
@@ -226,7 +231,8 @@ namespace MahoyoHDRepack
                 names = entries;
 
                 // sort them by name so we can look them up fairly quickly
-                names.Span.Sort(hedEntries.Span);
+                // this breaks writeout, because we don't (currently) rewrite the NAM file
+                //names.Span.Sort(hedEntries.Span);
             }
 
             var mrgFile = uniqMrgFile.Release();
@@ -263,8 +269,8 @@ namespace MahoyoHDRepack
                 var uncompressedSize = FileScanner.GetUncompressedSize(GetStorageForEntry(ref entry).AsFile(OpenMode.Read));
 
                 var offsetInSectors = offset / SectorSize;
-                var sizeInSectors = size / SectorSize;
-                var uncompressedSizeInSectors = uncompressedSize / SectorSize;
+                var sizeInSectors = (size + (SectorSize - 1)) / SectorSize;
+                var uncompressedSizeInSectors = (uncompressedSize + (SectorSize - 1)) / SectorSize;
                 MemoryMarshal.Write<LEUInt32>(data, offsetInSectors);
                 MemoryMarshal.Write<LEUInt16>(data[4..], (ushort)sizeInSectors);
                 MemoryMarshal.Write<LEUInt16>(data[6..], (ushort)uncompressedSizeInSectors);
@@ -333,7 +339,7 @@ namespace MahoyoHDRepack
                 result = PathToName(pathStr, out var name);
                 if (result.IsFailure()) return result.Miss();
 
-                var idx = names.Span.BinarySearch(name);
+                var idx = names.Span.IndexOf(name);
                 if (idx < 0)
                 {
                     // invalid name

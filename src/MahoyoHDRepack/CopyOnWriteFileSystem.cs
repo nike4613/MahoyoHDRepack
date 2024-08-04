@@ -89,7 +89,7 @@ public abstract class CopyOnWriteFileSystem : IFileSystem
             offset += entry.NewSize;
         }
 
-        var finalFileSize = offset;
+        var finalFileSize = AlignOffset(offset);
 
         Result result;
 

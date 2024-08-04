@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Immutable;
-using System.Net;
 using System.Runtime.InteropServices;
 using LibHac.Fs.Fsa;
 
@@ -93,8 +92,6 @@ internal sealed class SysmesText
                 fullSize += str.Length + 1; // for null terminator
             }
         }
-        // but the final string doesn't have a null terminator
-        fullSize -= 1;
 
         file.SetSize(fullSize).ThrowIfFailure();
 
@@ -106,18 +103,16 @@ internal sealed class SysmesText
         u8data.Clear();
         file.Write(8, u8data, default).ThrowIfFailure();
 
-        // offsets to first of each language string
-        for (var i = 0; i < languageLists.Length; i++)
-        {
-            MemoryMarshal.Write<LEUInt64>(u8data, (ulong)(16 + (8 * languageLists.Length) + (8 * i * numStrs)));
-            file.Write(16 + (8 * i), u8data, default).ThrowIfFailure();
-        }
-
-        // offsets to strings and strings
-        var stringOffset = firstString;
+        // pointer table
+        var langOffset = 16;
         var indexOffset = 16 + (8 * languageLists.Length);
+        var stringOffset = firstString;
         foreach (var lang in languageLists)
         {
+            MemoryMarshal.Write<LEUInt64>(u8data, (ulong)indexOffset);
+            file.Write(langOffset, u8data, default).ThrowIfFailure();
+            langOffset += 8;
+
             foreach (var str in lang)
             {
                 // write the index
@@ -127,10 +122,7 @@ internal sealed class SysmesText
 
                 // write the string
                 file.Write(stringOffset, str.AsSpan(), default).ThrowIfFailure();
-                if (stringOffset + str.Length < fullSize)
-                {
-                    file.Write(stringOffset + str.Length, [0], default).ThrowIfFailure();
-                }
+                file.Write(stringOffset + str.Length, [0], default).ThrowIfFailure();
                 stringOffset += str.Length + 1;
             }
         }

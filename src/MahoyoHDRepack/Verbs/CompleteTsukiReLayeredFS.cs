@@ -155,6 +155,13 @@ internal sealed class CompleteTsukiReLayeredFS
             {
                 // note: we never want to match against offset
                 var jpSpan = jpLang[i].AsSpan();
+                if (jpSpan is [(byte)'j', (byte)'a'])
+                {
+                    // string 0 in SYSMES_TEXT is used for suffixes of various files.
+                    // By forcing it from `jp` to `en`, we prevent the engine from loading many English-languag assets, including fonts.
+                    continue;
+                }
+
                 if (db.TryLookupLine(jpSpan, -1, out var line))
                 {
                     if (line.Translated is not null)
@@ -187,6 +194,7 @@ internal sealed class CompleteTsukiReLayeredFS
 
         // flush the filesystem
         allui.Flush().ThrowIfFailure();
+
     }
 
     private static void CopyMovies(IFileSystem srcFs, IFileSystem dstFs, GameLanguage targetLanguage)

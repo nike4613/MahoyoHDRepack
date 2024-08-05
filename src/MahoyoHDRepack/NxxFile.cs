@@ -12,140 +12,282 @@ using LibHac;
 using LibHac.Fs;
 using LibHac.Fs.Fsa;
 using LibHac.Tools.FsSystem;
+using MahoyoHDRepack.Utility;
 
-namespace MahoyoHDRepack
+namespace MahoyoHDRepack;
+
+internal sealed class NxxFile : IFile
 {
-    internal sealed class NxxFile : IFile
+    private const int HdrSize = 16;
+    private const int BufferSize = 16384;
+
+    public static IFile TryCreate(IFile file)
     {
-        private const int HdrSize = 16;
+        var result = file.GetSize(out var size);
+        if (result.IsFailure()) return file;
 
-        public static IFile TryCreate(IFile file)
+        if (size < HdrSize) return file;
+
+        Span<byte> hdr = stackalloc byte[HdrSize];
+        result = file.Read(out var bytesRead, 0, hdr);
+        if (result.IsFailure() || bytesRead < HdrSize) return file;
+
+        if (hdr[0..4].SequenceEqual(FileScanner.NxCx))
         {
-            var result = file.GetSize(out var size);
-            if (result.IsFailure()) return file;
+            var len = MemoryMarshal.Read<LEUInt32>(hdr[4..]);
+            var zlen = MemoryMarshal.Read<LEUInt32>(hdr[8..]);
 
-            if (size < HdrSize) return file;
-
-            Span<byte> hdr = stackalloc byte[HdrSize];
-            result = file.Read(out var bytesRead, 0, hdr);
-            if (result.IsFailure() || bytesRead < HdrSize) return file;
-
-            if (hdr[0..4].SequenceEqual(FileScanner.NxCx))
-            {
-                var len = MemoryMarshal.Read<LEUInt32>(hdr[4..]);
-                var zlen = MemoryMarshal.Read<LEUInt32>(hdr[8..]);
-
-                var dataStream = new PartialFile(file, HdrSize, zlen).AsStream(OpenMode.Read, false);
-                var inflater = new Inflater(false);
-                var inflaterStream = new InflaterInputStream(dataStream, inflater, 16384);
-                return new NxxFile(inflaterStream, new(), len);
-            }
-
-            if (hdr[0..4].SequenceEqual(FileScanner.NxGx))
-            {
-                var len = MemoryMarshal.Read<LEUInt32>(hdr[4..]);
-                var zlen = MemoryMarshal.Read<LEUInt32>(hdr[8..]);
-
-                var dataStream = new PartialFile(file, HdrSize, zlen).AsStream(OpenMode.Read, false);
-                var gzipStream = new GZipInputStream(dataStream, 16384);
-                return new NxxFile(gzipStream, new(), len);
-            }
-
-            return file;
+            var dataStream = new PartialFile(file, HdrSize, zlen).AsStream(OpenMode.Read, false);
+            var inflater = new Inflater(false);
+            var inflaterStream = new InflaterInputStream(dataStream, inflater, BufferSize);
+            return new NxxFile(file, inflaterStream, len, usesGzip: false);
         }
 
-        public static uint GetUncompressedSize(IFile file)
+        if (hdr[0..4].SequenceEqual(FileScanner.NxGx))
         {
-            file.GetSize(out var size).ThrowIfFailure();
-            if (size < HdrSize) ThrowHelper.ThrowInvalidOperationException("File too small to be compressed");
+            var len = MemoryMarshal.Read<LEUInt32>(hdr[4..]);
+            var zlen = MemoryMarshal.Read<LEUInt32>(hdr[8..]);
 
-            Span<byte> hdr = stackalloc byte[HdrSize];
-            file.Read(out var bytesRead, 0, hdr).ThrowIfFailure();
-            if (bytesRead < HdrSize) ThrowHelper.ThrowInvalidOperationException("Partial read");
-
-            if (hdr[0..4].SequenceEqual(FileScanner.NxCx) || hdr[0..4].SequenceEqual(FileScanner.NxGx))
-            {
-                return MemoryMarshal.Read<LEUInt32>(hdr[4..]);
-            }
-            else
-            {
-                ThrowHelper.ThrowInvalidOperationException("Not an Nxx compressed file");
-                return 0;
-            }
+            var dataStream = new PartialFile(file, HdrSize, zlen).AsStream(OpenMode.Read, false);
+            var gzipStream = new GZipInputStream(dataStream, BufferSize);
+            return new NxxFile(file, gzipStream, len, usesGzip: true);
         }
 
-        private readonly Stream decompStream;
-        private readonly MemoryStream buffer;
-        private readonly long length;
+        return file;
+    }
 
-        private NxxFile(Stream stream, MemoryStream buf, long len)
+    public static uint GetUncompressedSize(IFile file)
+    {
+        file.GetSize(out var size).ThrowIfFailure();
+        if (size < HdrSize) ThrowHelper.ThrowInvalidOperationException("File too small to be compressed");
+
+        Span<byte> hdr = stackalloc byte[HdrSize];
+        file.Read(out var bytesRead, 0, hdr).ThrowIfFailure();
+        if (bytesRead < HdrSize) ThrowHelper.ThrowInvalidOperationException("Partial read");
+
+        if (hdr[0..4].SequenceEqual(FileScanner.NxCx) || hdr[0..4].SequenceEqual(FileScanner.NxGx))
         {
-            decompStream = stream;
-            buffer = buf;
-            length = len;
+            return MemoryMarshal.Read<LEUInt32>(hdr[4..]);
         }
-
-        public override void Dispose()
+        else
         {
-            decompStream.Dispose();
-            buffer.Dispose();
+            ThrowHelper.ThrowInvalidOperationException("Not an Nxx compressed file");
+            return 0;
         }
+    }
 
-        protected override Result DoGetSize(out long size)
+    private readonly IFile underlyingFile;
+    private readonly Stream decompStream;
+    private readonly MemoryStorage buffer;
+    private long length;
+    private long decompressToLength;
+    private long nextBlockToDecompress;
+    private readonly bool usesGzip;
+
+    private NxxFile(IFile underlyingFile, Stream stream, long len, bool usesGzip)
+    {
+        this.underlyingFile = underlyingFile;
+        decompStream = stream;
+        buffer = new();
+        length = len;
+        this.usesGzip = usesGzip;
+    }
+
+    public override void Dispose()
+    {
+        decompStream.Dispose();
+        buffer.Dispose();
+        base.Dispose();
+    }
+
+    protected override Result DoGetSize(out long size)
+    {
+        size = length;
+        return Result.Success;
+    }
+
+    private Result EnsureOffsetInBuffer(long offset)
+    {
+        if (offset < nextBlockToDecompress)
         {
-            size = length;
+            // it's already available in the buffer
             return Result.Success;
         }
 
-        private void EnsureOffsetInBuffer(long offset)
+        Result result;
+
+        // resize the underlying buffer appropriately
+        if (buffer.Size <= offset)
         {
-            if (offset < buffer.Position)
-            {
-                // it's already available in the buffer
-                return;
-            }
-
-            var copyBuffer = ArrayPool<byte>.Shared.Rent(16384);
-            try
-            {
-                var fullSizeThreshold = length / 4 * 3;
-
-                while (buffer.Position < offset)
-                {
-                    // once the buffer is about at 3/4 of the full size, set the capacity to the final size
-                    if (buffer.Capacity < length && buffer.Position >= fullSizeThreshold)
-                    {
-                        buffer.Capacity = (int)length;
-                    }
-
-                    var read = decompStream.Read(copyBuffer);
-                    if (read is 0)
-                        break;
-                    buffer.Write(copyBuffer, 0, read);
-                }
-            }
-            finally
-            {
-                ArrayPool<byte>.Shared.Return(copyBuffer);
-            }
+            // need to grow the stream
+            // grow to a power of two, maxing out at our final length
+            var newSize = Helpers.NextPow2(offset);
+            newSize = long.Min(newSize, length);
+            result = buffer.SetSize(newSize);
+            if (result.IsFailure()) return result;
         }
 
-        protected override Result DoRead(out long bytesRead, long offset, Span<byte> destination, in ReadOption option)
+        var copyBuffer = ArrayPool<byte>.Shared.Rent(BufferSize);
+        try
         {
-            Unsafe.SkipInit(out bytesRead);
+            // don't decompress past decompressToLength, but we don't care about being very strict about it
+            while (nextBlockToDecompress < offset && nextBlockToDecompress < decompressToLength)
+            {
+                var read = decompStream.Read(copyBuffer);
+                if (read is 0)
+                    break;
 
-            var result = IStorage.CheckAccessRange(offset, destination.Length, length);
+                result = buffer.Write(nextBlockToDecompress, copyBuffer.AsSpan(0, read));
+                if (result.IsFailure()) return result;
+
+                nextBlockToDecompress += read;
+            }
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(copyBuffer);
+        }
+
+        return Result.Success;
+    }
+
+    protected override Result DoRead(out long bytesRead, long offset, Span<byte> destination, in ReadOption option)
+    {
+        Unsafe.SkipInit(out bytesRead);
+
+        var result = IStorage.CheckAccessRange(offset, destination.Length, length);
+        if (result.IsFailure()) return result;
+
+        result = EnsureOffsetInBuffer(offset + destination.Length - 1);
+        if (result.IsFailure()) return result;
+        result = buffer.Read(offset, destination);
+        if (result.IsFailure()) return result;
+
+        bytesRead = destination.Length;
+        return Result.Success;
+    }
+
+    protected override Result DoSetSize(long size)
+    {
+        Result result;
+
+        // set the size of the underlying buffer
+        result = buffer.SetSize(size);
+        if (result.IsFailure()) return result;
+
+        // and update our stored length
+        length = size;
+        // also make sure that our readToLength is the minimum of the existing value and the new size, so we don't try to populate later bits with data
+        decompressToLength = long.Min(decompressToLength, size);
+
+        return Result.Success;
+    }
+
+    protected override Result DoWrite(long offset, ReadOnlySpan<byte> source, in WriteOption option)
+    {
+        var result = IStorage.CheckAccessRange(offset, source.Length, length);
+        if (result.IsFailure()) return result;
+
+        // before writing, we want to make sure we've populated past the write so we don't accidentally overwrite written segments when reading later
+        result = EnsureOffsetInBuffer(offset + source.Length - 1);
+        if (result.IsFailure()) return result;
+        // then we can write
+        result = buffer.Write(offset, source);
+        if (result.IsFailure()) return result;
+
+        if (option.HasFlushFlag())
+        {
+            result = Flush();
+            if (result.IsFailure()) return result;
+        }
+
+        return Result.Success;
+    }
+
+    protected override Result DoFlush()
+    {
+        // in a flush, we want to re-compress the data, and inject the appropriate headers
+
+        // first, we reset the underlying file to just the header
+        var result = underlyingFile.SetSize(HdrSize);
+        if (result.IsFailure()) return result;
+
+        using var fileOutRawStream = new ResizingStorageStream(underlyingFile.AsStorage());
+        // make sure the stream write starts after the header
+        fileOutRawStream.Position = HdrSize;
+
+        ReadOnlySpan<byte> header;
+        Span<byte> headerData = stackalloc byte[8];
+        Stream compressOutputStream;
+
+        if (usesGzip)
+        {
+            header = FileScanner.NxGx;
+
+            compressOutputStream = new GZipOutputStream(fileOutRawStream, BufferSize);
+        }
+        else
+        {
+            // use deflate
+            header = FileScanner.NxCx;
+
+            var deflater = new Deflater(Deflater.BEST_COMPRESSION, false);
+            compressOutputStream = new DeflaterOutputStream(fileOutRawStream, deflater);
+        }
+
+        try
+        {
+            // write out what header we know of 
+            result = underlyingFile.Write(0, header);
             if (result.IsFailure()) return result;
 
-            EnsureOffsetInBuffer(offset + destination.Length - 1);
-            buffer.GetBuffer().AsSpan().Slice((int)offset, destination.Length).CopyTo(destination);
+            headerData.Clear();
+            // first is the decompressed length
+            MemoryMarshal.Write<LEUInt32>(headerData, (uint)length);
+            result = underlyingFile.Write(4, headerData.Slice(0, 4));
+            if (result.IsFailure()) return result;
+            // second, is the compressed length, but we don't know that just yet, so defer writing that
 
-            return Result.Success;
+            // now lets start copying data
+            var buf = ArrayPool<byte>.Shared.Rent(BufferSize);
+            var pos = 0L;
+            while (pos < length)
+            {
+                // read data from the buffer
+                var readSpan = buf.AsSpan();
+                if (pos + readSpan.Length > length)
+                {
+                    readSpan = readSpan.Slice(0, (int)(length - pos));
+                }
+
+                result = buffer.Read(pos, readSpan);
+                if (result.IsFailure()) return result;
+                pos += readSpan.Length;
+
+                // write it to the compression stream
+                compressOutputStream.Write(buf, 0, readSpan.Length);
+            }
+
+            // we're done compressing, flush both
+            compressOutputStream.Flush();
+            fileOutRawStream.Flush();
+
+            // we now know the length of the compressed data, write it
+            MemoryMarshal.Write<LEUInt32>(headerData, (uint)(fileOutRawStream.Position - HdrSize));
+            result = underlyingFile.Write(8, headerData.Slice(0, 4));
+            if (result.IsFailure()) return result;
+
+            // we're done writing out, flush the underlying file
+            result = underlyingFile.Flush();
+            if (result.IsFailure()) return result;
+        }
+        finally
+        {
+            compressOutputStream.Dispose();
         }
 
-        protected override Result DoOperateRange(Span<byte> outBuffer, OperationId operationId, long offset, long size, ReadOnlySpan<byte> inBuffer) => throw new NotSupportedException();
-        protected override Result DoSetSize(long size) => throw new NotSupportedException();
-        protected override Result DoWrite(long offset, ReadOnlySpan<byte> source, in WriteOption option) => throw new NotSupportedException();
-        protected override Result DoFlush() => throw new NotSupportedException();
+        return Result.Success;
     }
+
+    protected override Result DoOperateRange(Span<byte> outBuffer, OperationId operationId, long offset, long size, ReadOnlySpan<byte> inBuffer) => ResultFs.NotImplemented.Value;
 }

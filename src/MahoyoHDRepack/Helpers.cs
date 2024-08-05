@@ -50,6 +50,19 @@ public static class Helpers
         throw new ArgumentNullException(argName);
     }
 
+    public static long NextPow2(long x)
+    {
+        if (x < 0) { return 0; }
+        --x;
+        x |= x >> 1;
+        x |= x >> 2;
+        x |= x >> 4;
+        x |= x >> 8;
+        x |= x >> 16;
+        x |= x >> 32;
+        return x + 1;
+    }
+
     public static T EventAdd<T>(ref T? evt, T del) where T : Delegate
     {
         T? orig;

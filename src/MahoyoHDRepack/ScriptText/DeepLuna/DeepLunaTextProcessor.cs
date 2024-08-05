@@ -62,7 +62,7 @@ internal sealed class DeepLunaTextProcessor
             {
                 case '@':
                     // append the segment
-                    textSegments.Add((MergeFormatStates(atState, formatState), sb.ToString()));
+                    if (sb.Length > 0) textSegments.Add((MergeFormatStates(atState, formatState), sb.ToString()));
                     _ = sb.Clear();
                     formatState &= ~StringFormatState.OneSegmentOnlyMask;
 
@@ -91,14 +91,16 @@ internal sealed class DeepLunaTextProcessor
                             formatState |= StringFormatState.SimultaneousMark;
                             break;
                         case var x:
-                            Debug.Fail($"Unrecognized control code '@{x}'");
+                            Debug.WriteLine($"Unrecognized control code '@{x}'");
+                            // unrecognized, just add it verbatim
+                            _ = sb.Append('@').Append(x);
                             break;
                     }
                     break;
 
                 case '%' when text.AsSpan(i) is ['%', '{', ..]:
                     // append the segment
-                    textSegments.Add((MergeFormatStates(atState, formatState), sb.ToString()));
+                    if (sb.Length > 0) textSegments.Add((MergeFormatStates(atState, formatState), sb.ToString()));
                     _ = sb.Clear();
                     formatState &= ~StringFormatState.OneSegmentOnlyMask;
 

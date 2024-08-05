@@ -83,6 +83,7 @@ internal sealed class NxxFile : IFile
     private long decompressToLength;
     private long nextBlockToDecompress;
     private readonly bool usesGzip;
+    private bool didWrite;
 
     private NxxFile(IFile underlyingFile, Stream stream, long len, bool usesGzip)
     {
@@ -90,6 +91,7 @@ internal sealed class NxxFile : IFile
         decompStream = stream;
         buffer = new();
         length = len;
+        decompressToLength = len;
         this.usesGzip = usesGzip;
     }
 
@@ -114,6 +116,12 @@ internal sealed class NxxFile : IFile
             return Result.Success;
         }
 
+        if (nextBlockToDecompress >= decompressToLength)
+        {
+            // we've already decompressed as much as we're supposed to
+            return Result.Success;
+        }
+
         Result result;
 
         // resize the underlying buffer appropriately
@@ -133,11 +141,17 @@ internal sealed class NxxFile : IFile
             // don't decompress past decompressToLength, but we don't care about being very strict about it
             while (nextBlockToDecompress < offset && nextBlockToDecompress < decompressToLength)
             {
-                var read = decompStream.Read(copyBuffer);
+                var copySpan = copyBuffer.AsSpan();
+                if (nextBlockToDecompress + copySpan.Length > buffer.Size)
+                {
+                    copySpan = copySpan.Slice(0, (int)(buffer.Size - nextBlockToDecompress));
+                }
+
+                var read = decompStream.Read(copySpan);
                 if (read is 0)
                     break;
 
-                result = buffer.Write(nextBlockToDecompress, copyBuffer.AsSpan(0, read));
+                result = buffer.Write(nextBlockToDecompress, copySpan.Slice(0, read));
                 if (result.IsFailure()) return result;
 
                 nextBlockToDecompress += read;
@@ -180,6 +194,8 @@ internal sealed class NxxFile : IFile
         // also make sure that our readToLength is the minimum of the existing value and the new size, so we don't try to populate later bits with data
         decompressToLength = long.Min(decompressToLength, size);
 
+        didWrite = true;
+
         return Result.Success;
     }
 
@@ -195,6 +211,8 @@ internal sealed class NxxFile : IFile
         result = buffer.Write(offset, source);
         if (result.IsFailure()) return result;
 
+        didWrite = true;
+
         if (option.HasFlushFlag())
         {
             result = Flush();
@@ -206,6 +224,11 @@ internal sealed class NxxFile : IFile
 
     protected override Result DoFlush()
     {
+        if (!didWrite)
+        {
+            // if we never wrote, there's no work to do
+            return Result.Success;
+        }
         // in a flush, we want to re-compress the data, and inject the appropriate headers
 
         // first, we reset the underlying file to just the header
@@ -286,6 +309,7 @@ internal sealed class NxxFile : IFile
             compressOutputStream.Dispose();
         }
 
+        didWrite = false;
         return Result.Success;
     }
 

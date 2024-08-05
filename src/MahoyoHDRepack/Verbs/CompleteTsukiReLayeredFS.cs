@@ -11,6 +11,10 @@ using CommunityToolkit.Diagnostics;
 using System.Text;
 using System.Collections.Generic;
 using Syroot.NintenTools.NSW.Bntx;
+using Ryujinx.Graphics.Texture;
+using System.Linq;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.PixelFormats;
 
 namespace MahoyoHDRepack.Verbs;
 
@@ -272,7 +276,58 @@ internal sealed class CompleteTsukiReLayeredFS
 
         foreach (var (fromFile, intoName) in filesList)
         {
+            var texId = bntx.TextureDict.IndexOf(intoName);
+            var tex = bntx.Textures[texId];
 
+            var format = tex.Format;
+            Helpers.Assert(format is Syroot.NintenTools.NSW.Bntx.GFX.SurfaceFormat.BC7_SRGB);
+            Helpers.Assert(tex.Depth == 1);
+
+            var tileMode = tex.TileMode;
+
+            var rawData = tex.TextureData.Single().Single();
+
+            var sizeInfo = SizeCalculator.GetBlockLinearTextureSize(
+                (int)tex.Width, (int)tex.Height, (int)tex.Depth,
+                levels: 1,
+                layers: 1,
+                blockWidth: 4,
+                blockHeight: 4,
+                bytesPerPixel: 16,
+                gobBlocksInY: 1 << (int)tex.BlockHeightLog2,
+                gobBlocksInZ: 1,
+                gobBlocksInTileX: 1);
+
+            //*
+            using var linearData = LayoutConverter.ConvertBlockLinearToLinear(
+                (int)tex.Width, (int)tex.Height, (int)tex.Depth,
+                sliceDepth: (int)tex.Depth, // ?
+                levels: 1,
+                layers: 1,
+                blockWidth: 4,
+                blockHeight: 4,
+                bytesPerPixel: 16,
+                gobBlocksInY: 1 << (int)tex.BlockHeightLog2,
+                gobBlocksInZ: 1,
+                gobBlocksInTileX: 1,
+                sizeInfo: sizeInfo,
+                rawData);
+            //*/
+            /*
+            using var linearData = LayoutConverter.ConvertLinearStridedToLinear(
+                (int)tex.Width, (int)tex.Height,
+                blockWidth: 4, blockHeight: 4,
+                4 * (int)tex.Width, 4 * (int)tex.Width,
+                4,
+                rawData);
+            */
+
+            using var decodedData = BCnDecoder.DecodeBC7(linearData.Memory.Span,
+                (int)tex.Width, (int)tex.Height, (int)tex.Depth,
+                1, 1);
+
+            var img = Image.WrapMemory<Rgba32>(decodedData, (int)tex.Width, (int)tex.Height);
+            img.SaveAsPng($"{intoName}.png");
         }
     }
 

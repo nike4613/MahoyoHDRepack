@@ -35,6 +35,7 @@
     <ProjectReference Include="$(MMExternalPath)Ryujinx\src\Ryujinx.HLE\Ryujinx.HLE.csproj" />
     <ProjectReference Include="$(MMExternalPath)Ryujinx\src\Ryujinx.UI.Common\Ryujinx.UI.Common.csproj" />
     <ProjectReference Include="$(MMExternalPath)Ryujinx\src\Ryujinx.Common\Ryujinx.Common.csproj" />
+    <ProjectReference Include="$(MMExternalPath)Ryujinx\src\Ryujinx.Graphics.Texture\Ryujinx.Graphics.Texture.csproj" />
     <ProjectReference Include="$(MMExternalPath)LegacySwitchLibraries\Syroot.NintenTools.Bntx\Syroot.NintenTools.NSW.Bntx.csproj" />
   </ItemGroup>
   

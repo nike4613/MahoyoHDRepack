@@ -18,11 +18,15 @@ using SixLabors.ImageSharp.Advanced;
 using MahoyoHDRepack.Utility;
 using System.Buffers;
 using System.Diagnostics;
+using Ryujinx.Common.Memory;
+using System.Security.Cryptography;
 
 namespace MahoyoHDRepack.Verbs;
 
 internal sealed class CompleteTsukiReLayeredFS
 {
+    private static readonly string ImageCacheDir = Path.Combine(Path.GetTempPath(), "MahoyoHDRepack", "tsukire");
+
     public static void Run(
         string? ryuBase,
         FileInfo xciFile,
@@ -422,18 +426,7 @@ internal sealed class CompleteTsukiReLayeredFS
         var pixelData = new byte[pixelMem.TotalLength * sizeof(Rgba32)];
         imgToImport.CopyPixelDataTo(pixelData);
 
-        Console.WriteLine($"-----> Encoding {Path.GetFileNameWithoutExtension(fromFilePath)} ({imgToImport.Width}x{imgToImport.Height}, 0x{pixelData.Length:x8} bytes)");
-        var sw = Stopwatch.StartNew();
-        var bc7Encoded = BC7Encoder.EncodeBC7(pixelData,
-                        imgToImport.Width, imgToImport.Height, 1, levels: 1, layers: 1,
-#if !DEBUG
-                        fastMode: false,
-#endif
-                        multithreaded: true);
-        sw.Stop();
-        var totalPixels = imgToImport.Width * imgToImport.Height;
-        var pixPerSecond = totalPixels / sw.Elapsed.TotalSeconds;
-        Console.WriteLine($"-----> Encoding took {sw.Elapsed} ({pixPerSecond:N} pixels per second)");
+        using var bc7Encoded = Bc7EncodeImage(fromFilePath, imgToImport, pixelData);
 
         var replacedSizeInfo = SizeCalculator.GetBlockLinearTextureSize(
             imgToImport.Width, imgToImport.Height, 1,
@@ -464,6 +457,61 @@ internal sealed class CompleteTsukiReLayeredFS
         tex.Dim = Syroot.NintenTools.NSW.Bntx.GFX.Dim.Dim2D;
         tex.TextureData[0][0] = resultData;
         tex.ImageSize = (uint)resultData.Length;
+    }
+
+    private static unsafe MemoryOwner<byte> Bc7EncodeImage(string fromFilePath, Image<Rgba32> imgToImport, byte[] pixelData)
+    {
+        var imgHash = Convert.ToHexString(SHA256.HashData(pixelData));
+        var cachePath = Path.Combine(ImageCacheDir, $"{imgHash}.bc7");
+
+        if (File.Exists(cachePath))
+        {
+            try
+            {
+                var sw2 = Stopwatch.StartNew();
+                using var fstream = File.OpenRead(cachePath);
+
+                var data = MemoryOwner<byte>.Rent((int)fstream.Length);
+
+                var outSpan = data.Span;
+                int read;
+                do
+                {
+                    read = fstream.Read(outSpan);
+                    outSpan = outSpan[read..];
+                }
+                while (read > 0);
+                sw2.Stop();
+
+                Console.WriteLine($"-----> Loaded {Path.GetFileNameWithoutExtension(fromFilePath)} ({imgToImport.Width}x{imgToImport.Height}, 0x{pixelData.Length:x8} bytes) from cache in {sw2.Elapsed}");
+                Console.WriteLine($"       Cache is located at {cachePath}");
+                return data;
+            }
+            catch (IOException)
+            {
+                // fall out, redo the encode
+            }
+        }
+
+        Console.WriteLine($"-----> Encoding {Path.GetFileNameWithoutExtension(fromFilePath)} ({imgToImport.Width}x{imgToImport.Height}, 0x{pixelData.Length:x8} bytes)");
+        var sw = Stopwatch.StartNew();
+        var bc7Encoded = BC7Encoder.EncodeBC7(pixelData,
+                        imgToImport.Width, imgToImport.Height, 1, levels: 1, layers: 1,
+                        fastMode: false,
+                        multithreaded: true);
+        sw.Stop();
+        var totalPixels = imgToImport.Width * imgToImport.Height;
+        var pixPerSecond = totalPixels / sw.Elapsed.TotalSeconds;
+        Console.WriteLine($"-----> Encoding took {sw.Elapsed} ({pixPerSecond:N} pixels per second); caching at {cachePath}");
+
+        // write the encoded data out to disk
+        _ = Directory.CreateDirectory(ImageCacheDir);
+        using (var fstream = File.Create(cachePath))
+        {
+            fstream.Write(bc7Encoded.Span);
+        }
+
+        return bc7Encoded;
     }
 
     private static void CopyMovies(IFileSystem srcFs, IFileSystem dstFs, GameLanguage targetLanguage)

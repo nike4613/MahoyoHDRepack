@@ -283,5 +283,6 @@ var noArchive = new Option<bool>("--no-arc", "Do not treat archives as directori
     rootCmd.Add(cmd);
 }
 
+Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 Console.OutputEncoding = Encoding.UTF8;
 return await rootCmd.InvokeAsync(args).ConfigureAwait(false);

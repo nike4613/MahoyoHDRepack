@@ -292,22 +292,25 @@ internal sealed class NxxFile : IFile
             }
 
             // we're done compressing, flush both
-            compressOutputStream.Flush();
-            fileOutRawStream.Flush();
-
-            // we now know the length of the compressed data, write it
-            MemoryMarshal.Write<LEUInt32>(headerData, (uint)(fileOutRawStream.Position - HdrSize));
-            result = underlyingFile.Write(8, headerData.Slice(0, 4));
-            if (result.IsFailure()) return result;
-
-            // we're done writing out, flush the underlying file
-            result = underlyingFile.Flush();
-            if (result.IsFailure()) return result;
+            //compressOutputStream.Flush();
+            compressOutputStream.Close();
+            //fileOutRawStream.Flush();
+            fileOutRawStream.Close();
         }
         finally
         {
             compressOutputStream.Dispose();
+            fileOutRawStream.Dispose();
         }
+
+        // we now know the length of the compressed data, write it
+        MemoryMarshal.Write<LEUInt32>(headerData, (uint)(fileOutRawStream.Position - HdrSize));
+        result = underlyingFile.Write(8, headerData.Slice(0, 4));
+        if (result.IsFailure()) return result;
+
+        // we're done writing out, flush the underlying file
+        result = underlyingFile.Flush();
+        if (result.IsFailure()) return result;
 
         didWrite = false;
         return Result.Success;

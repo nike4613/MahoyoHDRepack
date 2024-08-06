@@ -15,6 +15,8 @@ using Ryujinx.Graphics.Texture;
 using System.Linq;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
+using SixLabors.ImageSharp.Advanced;
+using MahoyoHDRepack.Utility;
 
 namespace MahoyoHDRepack.Verbs;
 
@@ -258,12 +260,41 @@ internal sealed class CompleteTsukiReLayeredFS
 
     private static readonly Dictionary<string, (string FromFile, string IntoName)[]> injectAlluiFileListOverride = new()
     {
+        // TODO: dynamically select inject target suffix based on target language
+        ["CG_THUMB_PARTS"] = [
+            ("cg_thumb_all", "cg_thumb_all_en")
+        ],
         ["CONF_PARTS"] = [
             ("btn_default", "btn_default_en"), // for CONF_PARTS, we only want to inject btn_default. Well, we'd like to be able to inject conf_name, but the layout is different now...
+        ],
+        ["DISP_PARTS"] = [
+            // TODO:
+        ],
+        ["MENU_PARTS"] = [
+            ("flow_phasetitle", "flow_phasetitle_en"),
+            ("system_phasetitle_ja", "system_phasetitle_en"),
+            ("flow_thumb_all_nx", "flow_thumb_all_en"),
+        ],
+        ["GALLERY_PARTS"] = [
+            ("cg_title", "cg_title_en"),
+            ("ending_title", "ending_title_en"),
+            ("movie_title", "movie_title_en"),
+            ("music_title", "music_title_en"),
+            ("ending_icon_Arcueid", "ending_icon_Arcueid_en"),
+            ("ending_icon_Ciel_1", "ending_icon_Ciel_1_en"),
+            ("ending_icon_Ciel_2", "ending_icon_Ciel_2_en"),
+        ],
+        ["SAVE_PARTS"] = [
+            ("savetitle", "savetitle_en")
+        ],
+        // TODO: fix the title to not be the dumb EN title
+        ["TITLE_PARTS"] = [
+            ("caution(UpRGB)(scale)(x1.500000)", "caution_en"),
+            ("caution1_1920x1080", "caution1_en"),
         ]
     };
 
-    private static void InjectIntoAlluiBntx(GameLanguage targetLanguage, IFile targetFile, string fromPath, string nameClean)
+    private static unsafe void InjectIntoAlluiBntx(GameLanguage targetLanguage, IFile targetFile, string fromPath, string nameClean)
     {
         // TODO: automate more of this, instead of *just* deferring to the hardcoded lists
         if (!injectAlluiFileListOverride.TryGetValue(nameClean, out var filesList))
@@ -271,20 +302,35 @@ internal sealed class CompleteTsukiReLayeredFS
             return;
         }
 
+        Console.WriteLine($"{fromPath} -> allui/{nameClean}");
+
         // load the bntx
         var bntx = new BntxFile(targetFile.AsStream());
 
         foreach (var (fromFile, intoName) in filesList)
         {
+            Console.WriteLine($"  {fromFile}->{intoName}");
+            var fromFilePath = Path.Combine(fromPath, fromFile + ".png");
+
             var texId = bntx.TextureDict.IndexOf(intoName);
             var tex = bntx.Textures[texId];
 
             var format = tex.Format;
             Helpers.Assert(format is Syroot.NintenTools.NSW.Bntx.GFX.SurfaceFormat.BC7_SRGB);
             Helpers.Assert(tex.Depth == 1);
+            Helpers.Assert(tex.Dim is Syroot.NintenTools.NSW.Bntx.GFX.Dim.Dim2D);
+            Helpers.Assert(tex is
+            {
+                ChannelAlpha: Syroot.NintenTools.NSW.Bntx.GFX.ChannelType.Alpha,
+                ChannelBlue: Syroot.NintenTools.NSW.Bntx.GFX.ChannelType.Blue,
+                ChannelGreen: Syroot.NintenTools.NSW.Bntx.GFX.ChannelType.Green,
+                ChannelRed: Syroot.NintenTools.NSW.Bntx.GFX.ChannelType.Red,
+            });
 
             var tileMode = tex.TileMode;
+            Helpers.Assert(tileMode is Syroot.NintenTools.NSW.Bntx.GFX.TileMode.Default);
 
+            /*
             var rawData = tex.TextureData.Single().Single();
 
             var sizeInfo = SizeCalculator.GetBlockLinearTextureSize(
@@ -298,7 +344,6 @@ internal sealed class CompleteTsukiReLayeredFS
                 gobBlocksInZ: 1,
                 gobBlocksInTileX: 1);
 
-            //*
             using var linearData = LayoutConverter.ConvertBlockLinearToLinear(
                 (int)tex.Width, (int)tex.Height, (int)tex.Depth,
                 sliceDepth: (int)tex.Depth, // ?
@@ -312,15 +357,6 @@ internal sealed class CompleteTsukiReLayeredFS
                 gobBlocksInTileX: 1,
                 sizeInfo: sizeInfo,
                 rawData);
-            //*/
-            /*
-            using var linearData = LayoutConverter.ConvertLinearStridedToLinear(
-                (int)tex.Width, (int)tex.Height,
-                blockWidth: 4, blockHeight: 4,
-                4 * (int)tex.Width, 4 * (int)tex.Width,
-                4,
-                rawData);
-            */
 
             using var decodedData = BCnDecoder.DecodeBC7(linearData.Memory.Span,
                 (int)tex.Width, (int)tex.Height, (int)tex.Depth,
@@ -328,7 +364,58 @@ internal sealed class CompleteTsukiReLayeredFS
 
             var img = Image.WrapMemory<Rgba32>(decodedData, (int)tex.Width, (int)tex.Height);
             img.SaveAsPng($"{intoName}.png");
+            */
+
+            var imgToImport = Image.Load(fromFilePath).CloneAs<Rgba32>();
+            var pixelMem = imgToImport.GetPixelMemoryGroup();
+            var pixelData = new byte[pixelMem.TotalLength * sizeof(Rgba32)];
+            imgToImport.CopyPixelDataTo(pixelData);
+
+            // encode
+            using var bc7Encoded = BCnEncoder.EncodeBC7(pixelData,
+                imgToImport.Width, imgToImport.Height, 1, levels: 1, layers: 1);
+            var replacedSizeInfo = SizeCalculator.GetBlockLinearTextureSize(
+                imgToImport.Width, imgToImport.Height, 1,
+                levels: 1,
+                layers: 1,
+                blockWidth: 4,
+                blockHeight: 4,
+                bytesPerPixel: 16, // actually bytes per block
+                gobBlocksInY: 1 << (int)tex.BlockHeightLog2, // TODO: should this be changed, or left?
+                gobBlocksInZ: 1,
+                gobBlocksInTileX: 1);
+            // de-linearize
+            var resultData = new byte[replacedSizeInfo.TotalSize];
+            _ = LayoutConverter.ConvertLinearToBlockLinear(resultData,
+                imgToImport.Width, imgToImport.Height, 1,
+                sliceDepth: 1, levels: 1, layers: 1,
+                blockWidth: 4,
+                blockHeight: 4,
+                bytesPerPixel: 16, // actually bytes per block
+                gobBlocksInY: 1 << (int)tex.BlockHeightLog2, // TODO: should this be changed?
+                gobBlocksInZ: 1,
+                gobBlocksInTileX: 1,
+                replacedSizeInfo,
+                bc7Encoded.Memory.Span);
+            // now we can inject the data
+            tex.Width = (uint)imgToImport.Width;
+            tex.Height = (uint)imgToImport.Height;
+            tex.Dim = Syroot.NintenTools.NSW.Bntx.GFX.Dim.Dim2D;
+            tex.TextureData[0][0] = resultData;
         }
+
+        // note: we use skipFlush because the BNTX writier does a *lot* of flushing, which in turn goes through our compression logic
+        // over and over again
+        targetFile.SetSize(0).ThrowIfFailure(); // clear the file first
+        using var bntxSaveStream = new ResizingStorageStream(targetFile.AsStorage(), skipFlush: true);
+        bntx.Save(bntxSaveStream);
+        bntxSaveStream.ForceFlush(); // once we've finished, actually force a flush through
+
+        using var dbgFile = File.Create($"{nameClean}.bntx");
+        targetFile.GetSize(out var finalFileSize).ThrowIfFailure();
+        dbgFile.SetLength(finalFileSize);
+        using var dbgIFile = dbgFile.AsStorage();
+        targetFile.AsStorage().CopyTo(dbgIFile);
     }
 
     private static void CopyMovies(IFileSystem srcFs, IFileSystem dstFs, GameLanguage targetLanguage)

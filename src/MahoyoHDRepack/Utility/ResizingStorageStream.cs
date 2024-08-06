@@ -15,13 +15,15 @@ internal sealed class ResizingStorageStream : Stream
     private long storageSize;
     private long endOfStream;
     private long position;
+    private readonly bool skipFlush;
 
     // note: non-owning
-    public ResizingStorageStream(IStorage storage)
+    public ResizingStorageStream(IStorage storage, bool skipFlush = false)
     {
         this.storage = storage;
         storage.GetSize(out storageSize).ThrowIfFailure();
         endOfStream = storageSize;
+        this.skipFlush = skipFlush;
         position = 0;
     }
 
@@ -32,7 +34,12 @@ internal sealed class ResizingStorageStream : Stream
         get => position;
         set
         {
-            Guard.IsInRange(value, 0, endOfStream + 1);
+            if (value > endOfStream)
+            {
+                // a seek past the end of stream is OK, just need to make sure that we resize
+                GrowToAtLeastLength(value);
+                endOfStream = value;
+            }
             position = value;
         }
     }
@@ -76,10 +83,7 @@ internal sealed class ResizingStorageStream : Stream
         if (position + buffer.Length > storageSize)
         {
             // need to increase the size of the backing storage
-            var newSize = Helpers.NextPow2(position + buffer.Length);
-            storage.SetSize(newSize).ThrowIfFailure();
-            storage.GetSize(out storageSize).ThrowIfFailure();
-            // after this write, the head will be the end-of-stream marker
+            GrowToAtLeastLength(position + buffer.Length);
         }
 
         storage.Write(position, buffer).ThrowIfFailure();
@@ -87,8 +91,23 @@ internal sealed class ResizingStorageStream : Stream
         endOfStream = long.Max(endOfStream, position);
     }
 
+    private void GrowToAtLeastLength(long targetLength)
+    {
+        if (targetLength > storageSize)
+        {
+            var newSize = Helpers.NextPow2(targetLength);
+            storage.SetSize(newSize).ThrowIfFailure();
+            storage.GetSize(out storageSize).ThrowIfFailure();
+        }
+    }
 
     public override void Flush()
+    {
+        if (skipFlush) { return; }
+        ForceFlush();
+    }
+
+    public void ForceFlush()
     {
         if (storageSize != endOfStream)
         {

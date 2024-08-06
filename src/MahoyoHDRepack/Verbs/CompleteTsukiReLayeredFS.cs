@@ -12,12 +12,12 @@ using System.Text;
 using System.Collections.Generic;
 using Syroot.NintenTools.NSW.Bntx;
 using Ryujinx.Graphics.Texture;
-using System.Linq;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp.Advanced;
 using MahoyoHDRepack.Utility;
 using System.Buffers;
+using System.Diagnostics;
 
 namespace MahoyoHDRepack.Verbs;
 
@@ -417,55 +417,31 @@ internal sealed class CompleteTsukiReLayeredFS
         var tileMode = tex.TileMode;
         Helpers.Assert(tileMode is Syroot.NintenTools.NSW.Bntx.GFX.TileMode.Default);
 
-        /*
-        var rawData = tex.TextureData.Single().Single();
-
-        var sizeInfo = SizeCalculator.GetBlockLinearTextureSize(
-            (int)tex.Width, (int)tex.Height, (int)tex.Depth,
-            levels: 1,
-            layers: 1,
-            blockWidth: 4,
-            blockHeight: 4,
-            bytesPerPixel: 16,
-            gobBlocksInY: 1 << (int)tex.BlockHeightLog2,
-            gobBlocksInZ: 1,
-            gobBlocksInTileX: 1);
-
-        using var linearData = LayoutConverter.ConvertBlockLinearToLinear(
-            (int)tex.Width, (int)tex.Height, (int)tex.Depth,
-            sliceDepth: (int)tex.Depth, // ?
-            levels: 1,
-            layers: 1,
-            blockWidth: 4,
-            blockHeight: 4,
-            bytesPerPixel: 16,
-            gobBlocksInY: 1 << (int)tex.BlockHeightLog2,
-            gobBlocksInZ: 1,
-            gobBlocksInTileX: 1,
-            sizeInfo: sizeInfo,
-            rawData);
-
-        using var decodedData = BCnDecoder.DecodeBC7(linearData.Memory.Span,
-            (int)tex.Width, (int)tex.Height, (int)tex.Depth,
-            1, 1);
-
-        var img = Image.WrapMemory<Rgba32>(decodedData, (int)tex.Width, (int)tex.Height);
-        img.SaveAsPng($"{intoName}.png");
-        */
-
         var imgToImport = Image.Load(fromFilePath).CloneAs<Rgba32>();
         var pixelMem = imgToImport.GetPixelMemoryGroup();
         var pixelData = new byte[pixelMem.TotalLength * sizeof(Rgba32)];
         imgToImport.CopyPixelDataTo(pixelData);
-        var bc7Encoded = BCnEncoder.EncodeBC7(pixelData,
-                        imgToImport.Width, imgToImport.Height, 1, levels: 1, layers: 1);
+
+        Console.WriteLine($"-----> Encoding {Path.GetFileNameWithoutExtension(fromFilePath)} ({imgToImport.Width}x{imgToImport.Height}, 0x{pixelData.Length:x8} bytes)");
+        var sw = Stopwatch.StartNew();
+        var bc7Encoded = BC7Encoder.EncodeBC7(pixelData,
+                        imgToImport.Width, imgToImport.Height, 1, levels: 1, layers: 1,
+#if !DEBUG
+                        fastMode: false,
+#endif
+                        multithreaded: true);
+        sw.Stop();
+        var totalPixels = imgToImport.Width * imgToImport.Height;
+        var pixPerSecond = totalPixels / sw.Elapsed.TotalSeconds;
+        Console.WriteLine($"-----> Encoding took {sw.Elapsed} ({pixPerSecond:N} pixels per second)");
+
         var replacedSizeInfo = SizeCalculator.GetBlockLinearTextureSize(
             imgToImport.Width, imgToImport.Height, 1,
             levels: 1,
             layers: 1,
-            blockWidth: 4,
-            blockHeight: 4,
-            bytesPerPixel: 16, // actually bytes per block
+            blockWidth: BC7Encoder.BlockWidth,
+            blockHeight: BC7Encoder.BlockHeight,
+            bytesPerPixel: BC7Encoder.BlockSizeBytes, // actually bytes per block
             gobBlocksInY: 1 << (int)tex.BlockHeightLog2, // TODO: should this be changed, or left?
             gobBlocksInZ: 1,
             gobBlocksInTileX: 1);
@@ -474,9 +450,9 @@ internal sealed class CompleteTsukiReLayeredFS
         _ = LayoutConverter.ConvertLinearToBlockLinear(resultData,
             imgToImport.Width, imgToImport.Height, 1,
             sliceDepth: 1, levels: 1, layers: 1,
-            blockWidth: 4,
-            blockHeight: 4,
-            bytesPerPixel: 16, // actually bytes per block
+            blockWidth: BC7Encoder.BlockWidth,
+            blockHeight: BC7Encoder.BlockHeight,
+            bytesPerPixel: BC7Encoder.BlockSizeBytes, // actually bytes per block
             gobBlocksInY: 1 << (int)tex.BlockHeightLog2, // TODO: should this be changed?
             gobBlocksInZ: 1,
             gobBlocksInTileX: 1,

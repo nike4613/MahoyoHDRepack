@@ -247,7 +247,9 @@ internal sealed class NxxFile : IFile
         {
             header = FileScanner.NxGx;
 
-            compressOutputStream = new GZipOutputStream(fileOutRawStream, BufferSize);
+            var gzStream = new GZipOutputStream(fileOutRawStream, BufferSize);
+            gzStream.SetLevel(Deflater.BEST_COMPRESSION);
+            compressOutputStream = gzStream;
         }
         else
         {

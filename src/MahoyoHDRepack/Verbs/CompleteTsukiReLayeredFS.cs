@@ -304,8 +304,10 @@ internal sealed class CompleteTsukiReLayeredFS
 
         Console.WriteLine($"{fromPath} -> allui/{nameClean}");
 
+        var shiftJis = Encoding.GetEncoding("shift-jis");
+
         // load the bntx
-        var bntx = new BntxFile(targetFile.AsStream(), Encoding.GetEncoding("shift-jis"));
+        var bntx = new BntxFile(targetFile.AsStream(), shiftJis);
 
         foreach (var (fromFile, intoName) in filesList)
         {
@@ -408,14 +410,28 @@ internal sealed class CompleteTsukiReLayeredFS
         // over and over again
         targetFile.SetSize(0).ThrowIfFailure(); // clear the file first
         using var bntxSaveStream = new ResizingStorageStream(targetFile.AsStorage(), skipFlush: true);
-        bntx.Save(bntxSaveStream);
+
+        // saving for some ungodly reason writes console output, so suppress that
+        var origOut = Console.Out;
+        try
+        {
+            Console.SetOut(TextWriter.Null);
+            bntx.Save(bntxSaveStream, shiftJis);
+        }
+        finally
+        {
+            Console.SetOut(origOut);
+        }
+
         bntxSaveStream.ForceFlush(); // once we've finished, actually force a flush through
 
+#if DEBUG
         using var dbgFile = File.Create($"{nameClean}.bntx");
         targetFile.GetSize(out var finalFileSize).ThrowIfFailure();
         dbgFile.SetLength(finalFileSize);
         using var dbgIFile = dbgFile.AsStorage();
         targetFile.AsStorage().CopyTo(dbgIFile);
+#endif
     }
 
     private static void CopyMovies(IFileSystem srcFs, IFileSystem dstFs, GameLanguage targetLanguage)

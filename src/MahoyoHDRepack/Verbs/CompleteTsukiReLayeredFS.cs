@@ -305,7 +305,7 @@ internal sealed class CompleteTsukiReLayeredFS
         Console.WriteLine($"{fromPath} -> allui/{nameClean}");
 
         // load the bntx
-        var bntx = new BntxFile(targetFile.AsStream());
+        var bntx = new BntxFile(targetFile.AsStream(), Encoding.GetEncoding("shift-jis"));
 
         foreach (var (fromFile, intoName) in filesList)
         {

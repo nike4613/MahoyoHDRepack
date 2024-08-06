@@ -1,0 +1,4 @@
+interesting difference: in the OG JP release, emoji are embedded as Unicode chars
+                        in the new Aniplex multilingual release, they're embedded as [heart], [heart2], [star2], etc
+                        
+another interesting difference: ruby text <below|above> is disabled in EN in the new build (probably because of a different renderer?)

@@ -275,7 +275,7 @@ internal sealed class CompleteTsukiReLayeredFS
             ("flow_thumb_all_nx", "flow_thumb_all"),
         ],
         ["SAVE_PARTS"] = [
-            ("savetitle", "savetitle")
+            //("savetitle", "savetitle") // TODO: auto-fixup savetitle
         ],
         // TODO: fix the title to not be the dumb EN title
         ["TITLE_PARTS"] = [
@@ -437,6 +437,34 @@ internal sealed class CompleteTsukiReLayeredFS
         Helpers.Assert(tileMode is Syroot.NintenTools.NSW.Bntx.GFX.TileMode.Default);
 
         var imgToImport = Image.Load(fromFilePath).CloneAs<Rgba32>();
+
+        if (tex.Name == "flow_phasetitle_en")
+        {
+            // special case english, because of course
+            imgToImport = FixupColumnedAtlas(imgToImport, (int)tex.Width, 3, true);
+#if DEBUG
+            imgToImport.SaveAsPng("flow_phasetitle_fixed.png");
+#endif
+        }
+        if (tex.Name == "system_phasetitle_en")
+        {
+            // special case english, because of course
+            imgToImport = FixupColumnedAtlas(imgToImport, (int)tex.Width, 3, false);
+#if DEBUG
+            imgToImport.SaveAsPng("system_phasetitle_fixed.png");
+#endif
+        }
+        if (tex.Name == "savetitle_en")
+        {
+            // special case english, because of course
+            // TODO: this case is wrong; the savetitle image has uneven columns that are offset, and I
+            // have no idea how to work that out programmatically
+            imgToImport = FixupColumnedAtlas(imgToImport, (int)tex.Width, 4, false);
+#if DEBUG
+            imgToImport.SaveAsPng("savetitle_fixed.png");
+#endif
+        }
+
         var pixelMem = imgToImport.GetPixelMemoryGroup();
         var pixelData = new byte[pixelMem.TotalLength * sizeof(Rgba32)];
         imgToImport.CopyPixelDataTo(pixelData);
@@ -472,6 +500,39 @@ internal sealed class CompleteTsukiReLayeredFS
         tex.Dim = Syroot.NintenTools.NSW.Bntx.GFX.Dim.Dim2D;
         tex.TextureData[0][0] = resultData;
         tex.ImageSize = (uint)resultData.Length;
+    }
+
+    private static Image<Rgba32> FixupColumnedAtlas(Image<Rgba32> imgToImport, int targetWidth, int NumColumns, bool rightAlign)
+    {
+        var newImg = new Image<Rgba32>(targetWidth, imgToImport.Height);
+
+        imgToImport.ProcessPixelRows(newImg, (origData, newData) =>
+        {
+            Helpers.DAssert(origData.Height == newData.Height);
+
+            for (var y = 0; y < origData.Height; y++)
+            {
+                var origRow = origData.GetRowSpan(y);
+                var newRow = newData.GetRowSpan(y);
+
+                var origColWidth = origRow.Length / NumColumns;
+                var newColWidth = newRow.Length / NumColumns;
+
+                newRow.Fill(new(0, 0, 0, 0));
+                for (var col = 0; col < NumColumns; col++)
+                {
+                    var origX = col * origColWidth;
+                    var newX = col * newColWidth;
+                    if (rightAlign)
+                    {
+                        newX += newColWidth - origColWidth;
+                    }
+                    origRow.Slice(origX, int.Min(origColWidth, newColWidth)).CopyTo(newRow.Slice(newX));
+                }
+            }
+        });
+
+        return newImg;
     }
 
     private static unsafe MemoryOwner<byte> Bc7EncodeImage(string fromFilePath, Image<Rgba32> imgToImport, byte[] pixelData)

@@ -26,6 +26,7 @@ using SixLabors.ImageSharp.Formats.Png;
 using System.Linq;
 using CommunityToolkit.HighPerformance;
 using System.IO.Enumeration;
+using SixLabors.ImageSharp.Processing;
 
 namespace MahoyoHDRepack.Verbs;
 
@@ -401,6 +402,7 @@ internal sealed class CompleteTsukiReLayeredFS
     private static void InjectAllpacCore(ReadOnlySpan<(string Name, IFileSystem Fs)> allpacFilesystems, string gamecgDir, GameLanguage targetLanguage)
     {
         var filesInjected = 0;
+        var failedFiles = new List<(string path, string? gameTarget)>();
 
         foreach (var filePath in Directory.EnumerateFiles(gamecgDir, "*", SearchOption.AllDirectories))
         {
@@ -426,6 +428,7 @@ internal sealed class CompleteTsukiReLayeredFS
             // lets load the file once
             using var importImage = Image.Load(filePath).CloneAs<Rgba32>();
 
+            string? matchedName = null;
             var didFindFileMatch = false;
             foreach (var (pack, fs) in allpacFilesystems)
             {
@@ -466,6 +469,7 @@ internal sealed class CompleteTsukiReLayeredFS
                 }
 
                 didFindFileMatch = true;
+                matchedName = $"{pack}/{nameUpper}";
                 Console.WriteLine($"{filePath} -> {pack}/{nameUpper}");
 
                 // now operate based on the kind
@@ -476,7 +480,11 @@ internal sealed class CompleteTsukiReLayeredFS
                         {
                             using var existingImage = Image.Load(decompressedFile.AsStream()).CloneAs<Rgba32>();
                             using var replacementImage = GetInjectedAllpacImage(targetLanguage, existingImage, importImage);
-                            if (replacementImage is null) continue;
+                            if (replacementImage is null)
+                            {
+                                failedFiles.Add((filePath, matchedName));
+                                continue;
+                            }
 
                             decompressedFile.SetSize(0).ThrowIfFailure();
                             using var outputStream = new ResizingStorageStream(decompressedFile.AsStorage(), skipFlush: true);
@@ -553,7 +561,11 @@ internal sealed class CompleteTsukiReLayeredFS
                             using var originalImage = Image.WrapMemory<Rgba32>(decoded, (int)tex.Width, (int)tex.Height);
                             // compute the replacement, however that needs to be done
                             using var replacementImage = GetInjectedAllpacImage(targetLanguage, originalImage, importImage);
-                            if (replacementImage is null) continue;
+                            if (replacementImage is null)
+                            {
+                                failedFiles.Add((filePath, matchedName));
+                                continue;
+                            }
 
                             // now inject it into the texture
                             InjectIntoTex(tex, replacementImage, filePath);
@@ -596,16 +608,58 @@ internal sealed class CompleteTsukiReLayeredFS
             {
                 // warn because we couldn't find it
                 Console.WriteLine($"WRN: Couldn't find a matching file for {Path.GetRelativePath(gamecgDir, filePath)}");
+                failedFiles.Add((filePath, null));
             }
         }
+
+        Console.WriteLine("------------------------------------------------------------");
+        Console.WriteLine("FAILURE SUMMARY:");
+        foreach (var (path, target) in failedFiles)
+        {
+            if (target is null) continue;
+            Console.WriteLine($"{path} -> {target}");
+            Console.WriteLine($"    Uncorrectable image size mismatch, see earlier message");
+        }
+        foreach (var (path, target) in failedFiles)
+        {
+            if (target is not null) continue;
+            Console.WriteLine($"{path}");
+            Console.WriteLine($"    Could not find a matching file in any allpac filesystem");
+        }
+        Console.WriteLine("------------------------------------------------------------");
     }
 
     private static Image<Rgba32>? GetInjectedAllpacImage(GameLanguage targetLanguage, Image<Rgba32> originalImage, Image<Rgba32> injectImage)
     {
+
         if (originalImage.Width != injectImage.Width)
         {
-            Console.WriteLine($"ERR: Images are different widths! original:{originalImage.Width}x{originalImage.Height}, injected:{injectImage.Width}x{injectImage.Height}");
-            return null;
+            // TODO: compare aspect ratios of injectable segment somehow
+            // depending on the aspect ratios, we might want to do more fixups
+            if (originalImage.Width + injectImage.Height < injectImage.Width)
+            {
+                Console.WriteLine($"ERR: Images have drastically different widths; not injecting");
+                return null;
+            }
+
+            Console.WriteLine($"WRN: Images are different widths! original:{originalImage.Width}x{originalImage.Height}, injected:{injectImage.Width}x{injectImage.Height}");
+            Console.WriteLine($"     Resizing, keeping aspect ratio, then trimming off top and bottom evenly to match original height");
+
+            SizeF injectImageSize = injectImage.Size();
+            var scaleFactor = originalImage.Width / injectImageSize.Width;
+            var targetImageSize = SixLabors.ImageSharp.Size.Round(injectImageSize * scaleFactor);
+            Helpers.Assert(targetImageSize.Width == originalImage.Width);
+
+            var resizeOptions = new ResizeOptions()
+            {
+                Mode = ResizeMode.Crop,
+                Sampler = KnownResamplers.MitchellNetravali,
+                Position = AnchorPositionMode.Center,
+                Size = new(originalImage.Width, injectImage.Height),
+                TargetRectangle = new(default, targetImageSize)
+            };
+
+            injectImage.Mutate(ctx => ctx.Resize(resizeOptions));
         }
 
         if (originalImage.Height == injectImage.Height)
@@ -614,28 +668,48 @@ internal sealed class CompleteTsukiReLayeredFS
             return injectImage;
         }
 
-        if (originalImage.Height % injectImage.Height != 0)
+        var pixelsOff = originalImage.Height % injectImage.Height;
+        var maxIndex = originalImage.Height / injectImage.Height;
+        // if we were off by some number of pixels, duplicate the top/bottom rows to fit, preferring bottom
+        var dupPixelsTotal = pixelsOff / maxIndex; // should round properly
+
+        if (pixelsOff > 8) // if we're (arbitrarily) off by more than 8 pixels, skip
         {
             Console.WriteLine($"ERR: Original image is not a multiple of injected height! original:{originalImage.Width}x{originalImage.Height}, injected:{injectImage.Width}x{injectImage.Height}");
             return null;
         }
 
-        var maxIndex = originalImage.Height / injectImage.Height;
         if (maxIndex <= (int)targetLanguage)
         {
             Console.WriteLine($"ERR: Requested language ({targetLanguage}={(int)targetLanguage}) is out of bounds for image! original:{originalImage.Width}x{originalImage.Height}, max: {maxIndex}");
             return null;
         }
 
-        var voffset = injectImage.Height * (int)targetLanguage;
+        var voffset = (injectImage.Height + dupPixelsTotal) * (int)targetLanguage;
+        var dupPixelsTop = dupPixelsTotal >> 1;
+        var dupPixelsBottom = (dupPixelsTotal >> 1) | (dupPixelsTotal & 1);
 
         // after this, we don't need originalImage anymore, so just modify it
         originalImage.ProcessPixelRows(injectImage, (original, inject) =>
         {
+            for (var i = 0; i < dupPixelsTop; i++)
+            {
+                var fromRow = inject.GetRowSpan(0);
+                var toRow = original.GetRowSpan(voffset + i);
+                fromRow.CopyTo(toRow);
+            }
+
             for (var i = 0; i < inject.Height; i++)
             {
                 var fromRow = inject.GetRowSpan(i);
-                var toRow = original.GetRowSpan(voffset + i);
+                var toRow = original.GetRowSpan(voffset + dupPixelsTop + i);
+                fromRow.CopyTo(toRow);
+            }
+
+            for (var i = 0; i < dupPixelsBottom; i++)
+            {
+                var fromRow = inject.GetRowSpan(inject.Height - 1);
+                var toRow = original.GetRowSpan(voffset + dupPixelsTop + inject.Height + i);
                 fromRow.CopyTo(toRow);
             }
         });

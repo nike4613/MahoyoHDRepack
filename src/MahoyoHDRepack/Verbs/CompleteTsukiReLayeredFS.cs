@@ -265,9 +265,9 @@ internal sealed class CompleteTsukiReLayeredFS
 
     private static readonly Dictionary<string, (string FromFile, string IntoName)[]> injectAlluiFileListOverride = new()
     {
-        // TODO: dynamically select inject target suffix based on target language
         ["CONF_PARTS"] = [
             ("btn_default", "btn_default"), // for CONF_PARTS, we only want to inject btn_default. Well, we'd like to be able to inject conf_name, but the layout is different now...
+            // TODO: also inject conf_name, when we can disable the EN different layout
         ],
         ["MENU_PARTS"] = [
             ("flow_phasetitle", "flow_phasetitle"),
@@ -281,6 +281,13 @@ internal sealed class CompleteTsukiReLayeredFS
         ["TITLE_PARTS"] = [
             ("caution(UpRGB)(scale)(x1.500000)", "caution"),
             ("caution1_1920x1080", "caution1"),
+        ]
+    };
+
+    private static readonly Dictionary<string, HashSet<string>> injectAlluiSkipFile = new()
+    {
+        ["DISP_PARTS"] = [
+            "help_txt_ja"
         ]
     };
 
@@ -338,11 +345,19 @@ internal sealed class CompleteTsukiReLayeredFS
         }
         else
         {
+            _ = injectAlluiSkipFile.TryGetValue(nameClean, out var skipNames);
+
             // scan for candidates ourselves
             foreach (var filename in Directory.EnumerateFiles(fromPath, "*.png", SearchOption.TopDirectoryOnly))
             {
                 var basename = Path.GetFileNameWithoutExtension(filename);
                 var injectName = basename;
+
+                if (skipNames is not null && skipNames.Contains(basename))
+                {
+                    Console.WriteLine($"INF: Skipping {basename}");
+                    continue;
+                }
 
                 // try scan for exact match
                 var texId = bntx.TextureDict.IndexOf(injectName);

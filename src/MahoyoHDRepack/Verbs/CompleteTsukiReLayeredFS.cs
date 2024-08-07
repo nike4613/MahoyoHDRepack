@@ -20,6 +20,12 @@ using System.Buffers;
 using System.Diagnostics;
 using Ryujinx.Common.Memory;
 using System.Security.Cryptography;
+using LibHac.Bcat;
+using SixLabors.ImageSharp.Formats.Jpeg;
+using SixLabors.ImageSharp.Formats.Png;
+using System.Linq;
+using CommunityToolkit.HighPerformance;
+using System.IO.Enumeration;
 
 namespace MahoyoHDRepack.Verbs;
 
@@ -60,6 +66,9 @@ internal sealed class CompleteTsukiReLayeredFS
 
         // inject parts
         InjectPartsImages(outRomfs.Get, romfs, tsukihimatesDir, secondLang);
+
+        // inject allpac*
+        InjectAllpac(outRomfs.Get, romfs, tsukihimatesDir, secondLang);
 
         // once we've loaded all text, dump the fontinfo json
         Console.WriteLine($"Writing font info to {fontInfoJson}");
@@ -326,6 +335,314 @@ internal sealed class CompleteTsukiReLayeredFS
         parts.Flush().ThrowIfFailure();
     }
 
+    private static void InjectAllpac(IFileSystem outRomfs, WriteOverlayFileSystem romfs, DirectoryInfo tsukihimatesDir, GameLanguage secondLang)
+    {
+        using var allpacPath = new LibHac.Fs.Path();
+        allpacPath.Initialize("/w_allpac.mrg".ToU8Span()).ThrowIfFailure();
+        _ = outRomfs.DeleteFile(allpacPath);
+        allpacPath.Initialize("/w_allpac.hed".ToU8Span()).ThrowIfFailure();
+        _ = outRomfs.DeleteFile(allpacPath);
+        allpacPath.Initialize("/w_allpac.nam".ToU8Span()).ThrowIfFailure();
+        _ = outRomfs.DeleteFile(allpacPath);
+        allpacPath.InitializeWithNormalization("/w_allpac".ToU8Span().Value).ThrowIfFailure();
+        allpacPath.Normalize(default).ThrowIfFailure();
+
+        using var allpacmlPath = new LibHac.Fs.Path();
+        allpacmlPath.Initialize("/w_allpacml.mrg".ToU8Span()).ThrowIfFailure();
+        _ = outRomfs.DeleteFile(allpacmlPath);
+        allpacmlPath.Initialize("/w_allpacml.hed".ToU8Span()).ThrowIfFailure();
+        _ = outRomfs.DeleteFile(allpacmlPath);
+        allpacmlPath.Initialize("/w_allpacml.nam".ToU8Span()).ThrowIfFailure();
+        _ = outRomfs.DeleteFile(allpacmlPath);
+        allpacmlPath.InitializeWithNormalization("/w_allpacml".ToU8Span().Value).ThrowIfFailure();
+        allpacmlPath.Normalize(default).ThrowIfFailure();
+
+        using var allpaccgPath = new LibHac.Fs.Path();
+        allpaccgPath.Initialize("/w_allpaccg.mrg".ToU8Span()).ThrowIfFailure();
+        _ = outRomfs.DeleteFile(allpaccgPath);
+        allpaccgPath.Initialize("/w_allpaccg.hed".ToU8Span()).ThrowIfFailure();
+        _ = outRomfs.DeleteFile(allpaccgPath);
+        allpaccgPath.Initialize("/w_allpaccg.nam".ToU8Span()).ThrowIfFailure();
+        _ = outRomfs.DeleteFile(allpaccgPath);
+        allpaccgPath.InitializeWithNormalization("/w_allpaccg".ToU8Span().Value).ThrowIfFailure();
+        allpaccgPath.Normalize(default).ThrowIfFailure();
+
+        MrgFileSystem.Read(romfs, allpacPath, out var outAllpac).ThrowIfFailure();
+        Helpers.Assert(outAllpac is not null);
+        using var allpac = outAllpac;
+
+        MrgFileSystem.Read(romfs, allpacmlPath, out var outAllpacml).ThrowIfFailure();
+        Helpers.Assert(outAllpacml is not null);
+        using var allpacml = outAllpacml;
+
+        MrgFileSystem.Read(romfs, allpaccgPath, out var outAllpaccg).ThrowIfFailure();
+        Helpers.Assert(outAllpaccg is not null);
+        using var allpaccg = outAllpaccg;
+
+        // note: we treat all of the allpac* files uniformly, because I don't understand how they connect
+        // with the tsukihimates dir structure. We'll just look for all files in all packs.
+        var gamecgDir = Path.Combine(tsukihimatesDir.FullName, "images", "en_gamecg");
+        InjectAllpacCore([
+            ("w_allpac", allpac),
+            ("w_allpacml", allpacml),
+            ("w_allpaccg", allpaccg),
+        ], gamecgDir, secondLang);
+
+        Console.WriteLine("Images injected, writing. This may take a while.");
+        Console.WriteLine("w_allpac...");
+        allpac.Flush().ThrowIfFailure();
+        Console.WriteLine("w_allpacml...");
+        allpacml.Flush().ThrowIfFailure();
+        Console.WriteLine("w_allpaccg...");
+        allpaccg.Flush().ThrowIfFailure();
+        Console.WriteLine("Write complete!");
+    }
+
+    private static void InjectAllpacCore(ReadOnlySpan<(string Name, IFileSystem Fs)> allpacFilesystems, string gamecgDir, GameLanguage targetLanguage)
+    {
+        var filesInjected = 0;
+
+        foreach (var filePath in Directory.EnumerateFiles(gamecgDir, "*", SearchOption.AllDirectories))
+        {
+            // if this is a "thumb" folder, skip
+            if (Path.GetFileName(Path.GetDirectoryName(filePath)) == "thumb")
+            {
+                continue;
+            }
+
+            // select only the files with an extension we care about
+            var extension = Path.GetExtension(filePath).ToUpperInvariant();
+            switch (extension)
+            {
+                case ".PNG":
+                case ".JPG":
+                    break;
+                default: // not a file we care about, skip
+                    continue;
+            }
+
+            var nameUpper = Path.GetFileNameWithoutExtension(filePath).ToUpperInvariant();
+
+            // lets load the file once
+            using var importImage = Image.Load(filePath).CloneAs<Rgba32>();
+
+            var didFindFileMatch = false;
+            foreach (var (pack, fs) in allpacFilesystems)
+            {
+                using UniqueRef<IFile> file = default;
+
+                // first, try exact filename
+                var result = fs.OpenFile(ref file.Ref, $"/{nameUpper}{extension}".ToU8Span(), LibHac.Fs.OpenMode.ReadWrite);
+                if (result.IsFailure())
+                {
+                    // no such file, next lets try .JPG
+                    result = fs.OpenFile(ref file.Ref, $"/{nameUpper}.JPG".ToU8Span(), LibHac.Fs.OpenMode.ReadWrite);
+                }
+                if (result.IsFailure())
+                {
+                    // if still no such file, try .NXGZ
+                    result = fs.OpenFile(ref file.Ref, $"/{nameUpper}.NXGZ".ToU8Span(), LibHac.Fs.OpenMode.ReadWrite);
+                }
+                if (result.IsFailure())
+                {
+                    // still no file, it's probably not in this pack
+                    continue;
+                }
+
+                using var decompressedFile = FileScanner.TryGetDecompressedFile(file.Get);
+                var fileKind = FileScanner.ProbeForFileType(decompressedFile);
+                switch (fileKind)
+                {
+                    case KnownFileTypes.Bntx:
+                    case KnownFileTypes.Jpeg:
+                    case KnownFileTypes.Png:
+                        // all of these are acceptable formats
+                        break;
+
+                    default:
+                        // not an image format we know about, bail
+                        Console.WriteLine($"ERR: File {pack}/{nameUpper} is not an image (real kind {fileKind})");
+                        continue;
+                }
+
+                didFindFileMatch = true;
+                Console.WriteLine($"{filePath} -> {pack}/{nameUpper}");
+
+                // now operate based on the kind
+                switch (fileKind)
+                {
+                    case KnownFileTypes.Png:
+                    case KnownFileTypes.Jpeg:
+                        {
+                            using var existingImage = Image.Load(decompressedFile.AsStream()).CloneAs<Rgba32>();
+                            using var replacementImage = GetInjectedAllpacImage(targetLanguage, existingImage, importImage);
+                            if (replacementImage is null) continue;
+
+                            decompressedFile.SetSize(0).ThrowIfFailure();
+                            using var outputStream = new ResizingStorageStream(decompressedFile.AsStorage(), skipFlush: true);
+                            if (fileKind is KnownFileTypes.Png)
+                            {
+                                var pngEncoder = new PngEncoder()
+                                {
+                                    //CompressionLevel = PngCompressionLevel.BestCompression
+                                };
+                                replacementImage.SaveAsPng(outputStream);
+                            }
+                            else
+                            {
+                                var jpegEncoder = new JpegEncoder()
+                                {
+                                    Quality = 100,
+                                    //ColorType = JpegColorType.YCbCrRatio444,
+                                };
+                                replacementImage.SaveAsJpeg(outputStream, jpegEncoder);
+                            }
+                            outputStream.ForceFlush();
+                        }
+                        break;
+
+                    case KnownFileTypes.Bntx:
+                        {
+                            var shiftJis = Encoding.GetEncoding("shift-jis");
+
+                            // load the bntx
+                            var bntx = new BntxFile(decompressedFile.AsStream(), shiftJis);
+
+                            Helpers.Assert(bntx.Textures.Count == 1);
+                            var tex = bntx.Textures[0];
+                            Helpers.Assert(tex.Format is Syroot.NintenTools.NSW.Bntx.GFX.SurfaceFormat.BC7_SRGB);
+                            Helpers.Assert(tex.Depth == 1);
+                            Helpers.Assert(tex.Dim is Syroot.NintenTools.NSW.Bntx.GFX.Dim.Dim2D);
+                            Helpers.Assert(tex is
+                            {
+                                ChannelAlpha: Syroot.NintenTools.NSW.Bntx.GFX.ChannelType.Alpha,
+                                ChannelBlue: Syroot.NintenTools.NSW.Bntx.GFX.ChannelType.Blue,
+                                ChannelGreen: Syroot.NintenTools.NSW.Bntx.GFX.ChannelType.Green,
+                                ChannelRed: Syroot.NintenTools.NSW.Bntx.GFX.ChannelType.Red,
+                            });
+                            Helpers.Assert(tex.TileMode is Syroot.NintenTools.NSW.Bntx.GFX.TileMode.Default);
+
+                            var originalSizeInfo = SizeCalculator.GetBlockLinearTextureSize(
+                                (int)tex.Width, (int)tex.Height, 1,
+                                levels: 1,
+                                layers: 1,
+                                blockWidth: BC7Encoder.BlockWidth,
+                                blockHeight: BC7Encoder.BlockHeight,
+                                bytesPerPixel: BC7Encoder.BlockSizeBytes, // actually bytes per block
+                                gobBlocksInY: 1 << (int)tex.BlockHeightLog2,
+                                gobBlocksInZ: 1,
+                                gobBlocksInTileX: 1);
+
+                            // linearize
+                            using var linearized = LayoutConverter.ConvertBlockLinearToLinear(
+                                (int)tex.Width, (int)tex.Height, 1, 1, 1, 1,
+                                blockWidth: BC7Encoder.BlockWidth,
+                                blockHeight: BC7Encoder.BlockHeight,
+                                bytesPerPixel: BC7Encoder.BlockSizeBytes,
+                                gobBlocksInY: 1 << (int)tex.BlockHeightLog2,
+                                gobBlocksInZ: 1,
+                                gobBlocksInTileX: 1,
+                                originalSizeInfo,
+                                tex.TextureData.Single().Single());
+
+                            // then decode
+                            var decoded = BCnDecoder.DecodeBC7(linearized.Memory.Span,
+                                (int)tex.Width, (int)tex.Height, 1, 1, 1);
+
+                            // then adopt the image
+                            using var originalImage = Image.WrapMemory<Rgba32>(decoded, (int)tex.Width, (int)tex.Height);
+                            // compute the replacement, however that needs to be done
+                            using var replacementImage = GetInjectedAllpacImage(targetLanguage, originalImage, importImage);
+                            if (replacementImage is null) continue;
+
+                            // now inject it into the texture
+                            InjectIntoTex(tex, replacementImage, filePath);
+
+                            // note: we use skipFlush because the BNTX writer does a *lot* of flushing, which in turn goes through our compression logic
+                            // over and over again
+                            decompressedFile.SetSize(0).ThrowIfFailure(); // clear the file first
+                            using var bntxSaveStream = new ResizingStorageStream(decompressedFile.AsStorage(), skipFlush: true);
+
+                            // saving for some ungodly reason writes console output, so suppress that
+                            var origOut = Console.Out;
+                            try
+                            {
+                                Console.SetOut(TextWriter.Null);
+                                bntx.Save(bntxSaveStream, shiftJis);
+                            }
+                            finally
+                            {
+                                Console.SetOut(origOut);
+                            }
+
+                            bntxSaveStream.ForceFlush(); // once we've finished, actually force a flush through
+                        }
+                        break;
+                }
+
+                filesInjected++;
+                decompressedFile.Flush().ThrowIfFailure();
+                file.Get.Flush().ThrowIfFailure();
+
+                if (filesInjected > 8)
+                {
+                    // if we've injected several files, flush out before continuing
+                    filesInjected = 0;
+                    //fs.Flush().ThrowIfFailure();
+                }
+            }
+
+            if (!didFindFileMatch)
+            {
+                // warn because we couldn't find it
+                Console.WriteLine($"WRN: Couldn't find a matching file for {Path.GetRelativePath(gamecgDir, filePath)}");
+            }
+        }
+    }
+
+    private static Image<Rgba32>? GetInjectedAllpacImage(GameLanguage targetLanguage, Image<Rgba32> originalImage, Image<Rgba32> injectImage)
+    {
+        if (originalImage.Width != injectImage.Width)
+        {
+            Console.WriteLine($"ERR: Images are different widths! original:{originalImage.Width}x{originalImage.Height}, injected:{injectImage.Width}x{injectImage.Height}");
+            return null;
+        }
+
+        if (originalImage.Height == injectImage.Height)
+        {
+            // the images are the same size, there's no issue, just inject it normally
+            return injectImage;
+        }
+
+        if (originalImage.Height % injectImage.Height != 0)
+        {
+            Console.WriteLine($"ERR: Original image is not a multiple of injected height! original:{originalImage.Width}x{originalImage.Height}, injected:{injectImage.Width}x{injectImage.Height}");
+            return null;
+        }
+
+        var maxIndex = originalImage.Height / injectImage.Height;
+        if (maxIndex <= (int)targetLanguage)
+        {
+            Console.WriteLine($"ERR: Requested language ({targetLanguage}={(int)targetLanguage}) is out of bounds for image! original:{originalImage.Width}x{originalImage.Height}, max: {maxIndex}");
+            return null;
+        }
+
+        var voffset = injectImage.Height * (int)targetLanguage;
+
+        // after this, we don't need originalImage anymore, so just modify it
+        originalImage.ProcessPixelRows(injectImage, (original, inject) =>
+        {
+            for (var i = 0; i < inject.Height; i++)
+            {
+                var fromRow = inject.GetRowSpan(i);
+                var toRow = original.GetRowSpan(voffset + i);
+                fromRow.CopyTo(toRow);
+            }
+        });
+
+        return originalImage;
+    }
+
     private static unsafe void InjectIntoBntx(GameLanguage targetLanguage, string targetDir, IFile targetFile,
         string fromPath, string nameClean,
         (string FromFile, string IntoName)[]? filesList, HashSet<string>? skipNames)
@@ -377,7 +694,10 @@ internal sealed class CompleteTsukiReLayeredFS
 
                 var tex = bntx.Textures[texId];
                 Console.WriteLine($"  {fromFile}->{tex.Name}");
-                InjectIntoTex(tex, fromFilePath);
+
+                using var imgToImport = Image.Load(fromFilePath).CloneAs<Rgba32>();
+                using var realImage = MaybeFixupAtlas(imgToImport, tex.Name, (int)tex.Width);
+                InjectIntoTex(tex, realImage, fromFilePath);
             }
         }
         else
@@ -422,11 +742,47 @@ internal sealed class CompleteTsukiReLayeredFS
 
                 var tex = bntx.Textures[texId];
                 Console.WriteLine($"  {basename}->{tex.Name}");
-                InjectIntoTex(tex, filename);
+
+                using var imgToImport = Image.Load(filename).CloneAs<Rgba32>();
+                using var realImage = MaybeFixupAtlas(imgToImport, tex.Name, (int)tex.Width);
+                InjectIntoTex(tex, realImage, filename);
             }
         }
 
-        // note: we use skipFlush because the BNTX writier does a *lot* of flushing, which in turn goes through our compression logic
+        static Image<Rgba32> MaybeFixupAtlas(Image<Rgba32> imgToImport, string textureName, int texWidth)
+        {
+            if (textureName == "flow_phasetitle_en")
+            {
+                // special case english, because of course
+                imgToImport = FixupColumnedAtlas(imgToImport, texWidth, 3, true);
+#if DEBUG
+                imgToImport.SaveAsPng("flow_phasetitle_fixed.png");
+#endif
+            }
+            if (textureName == "system_phasetitle_en")
+            {
+                // special case english, because of course
+                // TODO: this is actually wrong too! These aren't actually equal-sized columns, but instead some other garbage
+                imgToImport = FixupColumnedAtlas(imgToImport, texWidth, 3, false);
+#if DEBUG
+                imgToImport.SaveAsPng("system_phasetitle_fixed.png");
+#endif
+            }
+            if (textureName == "savetitle_en")
+            {
+                // special case english, because of course
+                // TODO: this case is wrong; the savetitle image has uneven columns that are offset, and I
+                // have no idea how to work that out programmatically
+                imgToImport = FixupColumnedAtlas(imgToImport, texWidth, 4, false);
+#if DEBUG
+                imgToImport.SaveAsPng("savetitle_fixed.png");
+#endif
+            }
+
+            return imgToImport;
+        }
+
+        // note: we use skipFlush because the BNTX writer does a *lot* of flushing, which in turn goes through our compression logic
         // over and over again
         targetFile.SetSize(0).ThrowIfFailure(); // clear the file first
         using var bntxSaveStream = new ResizingStorageStream(targetFile.AsStorage(), skipFlush: true);
@@ -454,10 +810,9 @@ internal sealed class CompleteTsukiReLayeredFS
 #endif
     }
 
-    private static unsafe void InjectIntoTex(Texture tex, string fromFilePath)
+    private static unsafe void InjectIntoTex(Texture tex, Image<Rgba32> imgToImport, string fromFilePath)
     {
-        var format = tex.Format;
-        Helpers.Assert(format is Syroot.NintenTools.NSW.Bntx.GFX.SurfaceFormat.BC7_SRGB);
+        Helpers.Assert(tex.Format is Syroot.NintenTools.NSW.Bntx.GFX.SurfaceFormat.BC7_SRGB);
         Helpers.Assert(tex.Depth == 1);
         Helpers.Assert(tex.Dim is Syroot.NintenTools.NSW.Bntx.GFX.Dim.Dim2D);
         Helpers.Assert(tex is
@@ -467,39 +822,7 @@ internal sealed class CompleteTsukiReLayeredFS
             ChannelGreen: Syroot.NintenTools.NSW.Bntx.GFX.ChannelType.Green,
             ChannelRed: Syroot.NintenTools.NSW.Bntx.GFX.ChannelType.Red,
         });
-
-        var tileMode = tex.TileMode;
-        Helpers.Assert(tileMode is Syroot.NintenTools.NSW.Bntx.GFX.TileMode.Default);
-
-        var imgToImport = Image.Load(fromFilePath).CloneAs<Rgba32>();
-
-        if (tex.Name == "flow_phasetitle_en")
-        {
-            // special case english, because of course
-            imgToImport = FixupColumnedAtlas(imgToImport, (int)tex.Width, 3, true);
-#if DEBUG
-            imgToImport.SaveAsPng("flow_phasetitle_fixed.png");
-#endif
-        }
-        if (tex.Name == "system_phasetitle_en")
-        {
-            // special case english, because of course
-            // TODO: this is actually wrong too! These aren't actually equal-sized columns, but instead some other garbage
-            imgToImport = FixupColumnedAtlas(imgToImport, (int)tex.Width, 3, false);
-#if DEBUG
-            imgToImport.SaveAsPng("system_phasetitle_fixed.png");
-#endif
-        }
-        if (tex.Name == "savetitle_en")
-        {
-            // special case english, because of course
-            // TODO: this case is wrong; the savetitle image has uneven columns that are offset, and I
-            // have no idea how to work that out programmatically
-            imgToImport = FixupColumnedAtlas(imgToImport, (int)tex.Width, 4, false);
-#if DEBUG
-            imgToImport.SaveAsPng("savetitle_fixed.png");
-#endif
-        }
+        Helpers.Assert(tex.TileMode is Syroot.NintenTools.NSW.Bntx.GFX.TileMode.Default);
 
         var pixelMem = imgToImport.GetPixelMemoryGroup();
         var pixelData = new byte[pixelMem.TotalLength * sizeof(Rgba32)];

@@ -538,21 +538,29 @@ internal static class ExtractAll
             progress.SetStatusString($"{Encoding.UTF8.GetString(dstPath.AsSpan())} (id {it.EnumId})");
 
             // copy the file
-            srcStorage.GetSize(out var totalSize).ThrowIfFailure();
-            ForceCreateFileInFs(targetFs.Get, dstPath, totalSize, CreateFileOptions.None);
-            using (UniqueRef<IFile> dstFile = default)
+            try
             {
-                var openResult = targetFs.Get.OpenFile(ref dstFile.Ref, dstPath, OpenMode.Write);
-                if (openResult == ResultFs.TargetLocked.Value)
+                srcStorage.GetSize(out var totalSize).ThrowIfFailure();
+                ForceCreateFileInFs(targetFs.Get, dstPath, totalSize, CreateFileOptions.None);
+                using (UniqueRef<IFile> dstFile = default)
                 {
-                    Helpers.Assert(messagesChannel.Writer.TryWrite(
-                        $"WARNING: Could not open {Encoding.UTF8.GetString(dstPath.AsSpan())} (id {it.EnumId}) for writing. " +
-                        $"This likely means that there are multiple files with that name."));
-                    goto Done;
+                    var openResult = targetFs.Get.OpenFile(ref dstFile.Ref, dstPath, OpenMode.Write);
+                    if (openResult == ResultFs.TargetLocked.Value)
+                    {
+                        Helpers.Assert(messagesChannel.Writer.TryWrite(
+                            $"WARNING: Could not open {Encoding.UTF8.GetString(dstPath.AsSpan())} (id {it.EnumId}) for writing. " +
+                            $"This likely means that there are multiple files with that name."));
+                        goto Done;
+                    }
+                    openResult.ThrowIfFailure();
+                    dstFile.Get.SetSize(totalSize).ThrowIfFailure();
+                    srcStorage.CopyTo(dstFile.Get.AsStorage());
                 }
-                openResult.ThrowIfFailure();
-                dstFile.Get.SetSize(totalSize).ThrowIfFailure();
-                srcStorage.CopyTo(dstFile.Get.AsStorage());
+            }
+            catch (Exception ex)
+            {
+                Helpers.Assert(messagesChannel.Writer.TryWrite(
+                    $"ERROR: Exception occurred while trying to extract {Encoding.UTF8.GetString(dstPath.AsSpan())} (id {it.EnumId}): {ex.ToString()}"));
             }
 
         Done:

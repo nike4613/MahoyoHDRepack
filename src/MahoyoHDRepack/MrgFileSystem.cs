@@ -17,7 +17,7 @@ namespace MahoyoHDRepack
     {
         private struct HedEntry(long Offset, long Size)
         {
-            public CowEntry Entry = new() { Size = (uint)Size, Offset = (uint)Offset };
+            public CowEntry Entry = new() { Size = Size, Offset = Offset };
 
             public long Offset => Entry.Offset;
             public long Size => Entry.Size;
@@ -114,7 +114,7 @@ namespace MahoyoHDRepack
         }
 
         private const int HedEntrySize = 8;
-        private const uint SectorSize = 0x800;
+        private const long SectorSize = 0x800;
 
         private static Result ReadCore(IFileSystem fs, SharedRef<IFileSystem> fsSharedRef, in Path path, out MrgFileSystem? mrgFs)
         {
@@ -180,7 +180,7 @@ namespace MahoyoHDRepack
                         return new Result(256, 10);
                     }
 
-                    var offset = MemoryMarshal.Read<LEUInt32>(readBuf).Value;
+                    var offset = (long)MemoryMarshal.Read<LEUInt32>(readBuf).Value;
                     if (offset == uint.MaxValue)
                     {
                         // end of file
@@ -189,7 +189,7 @@ namespace MahoyoHDRepack
 
                     offset *= SectorSize;
 
-                    var size = SectorSize * MemoryMarshal.Read<LEUInt16>(readBuf[4..]).Value;
+                    var size = SectorSize * (long)MemoryMarshal.Read<LEUInt16>(readBuf[4..]).Value;
 
                     // note: the last u16 is the size of the file, uncompressed
 
@@ -246,10 +246,10 @@ namespace MahoyoHDRepack
         }
 
         protected override int GetEntryCount() => files.Length;
-        protected override uint GetDataOffset() => 0;
-        protected override uint AlignOffset(uint offset) => (offset + (SectorSize - 1)) & ~(SectorSize - 1);
+        protected override long GetDataOffset() => 0;
+        protected override long AlignOffset(long offset) => (offset + (SectorSize - 1)) & ~(SectorSize - 1);
         protected override ref CowEntry GetEntry(int i) => ref files.Span[i].Entry;
-        protected override Result WriteHeader(IStorage storage, uint dataOffset)
+        protected override Result WriteHeader(IStorage storage, long dataOffset)
         {
             // note: while the main file doesn't have a header, we still want to write the hed
 
@@ -271,7 +271,7 @@ namespace MahoyoHDRepack
                 var offsetInSectors = offset / SectorSize;
                 var sizeInSectors = (size + (SectorSize - 1)) / SectorSize;
                 var uncompressedSizeInSectors = (uncompressedSize + (SectorSize - 1)) / SectorSize;
-                MemoryMarshal.Write<LEUInt32>(data, offsetInSectors);
+                MemoryMarshal.Write<LEUInt32>(data, (uint)offsetInSectors);
                 MemoryMarshal.Write<LEUInt16>(data[4..], (ushort)sizeInSectors);
                 MemoryMarshal.Write<LEUInt16>(data[6..], (ushort)uncompressedSizeInSectors);
 

@@ -154,11 +154,11 @@ namespace MahoyoHDRepack
         }
 
         // files do not seem to need to be aligned
-        protected override uint AlignOffset(uint offset) => offset;
-        protected override uint GetDataOffset() => (uint)(HeaderSize + (EntrySize * entries.Length));
+        protected override long AlignOffset(long offset) => offset;
+        protected override long GetDataOffset() => (long)(HeaderSize + (EntrySize * entries.Length));
         protected override ref CowEntry GetEntry(int i) => ref entries[i].CowEntry;
         protected override int GetEntryCount() => entries.Length;
-        protected override Result WriteHeader(IStorage storage, uint dataOffset)
+        protected override Result WriteHeader(IStorage storage, long dataOffset)
         {
             // first we write the HFA header
             Span<byte> hdrSpan = stackalloc byte[HeaderSize];
@@ -176,7 +176,7 @@ namespace MahoyoHDRepack
 
                 // note: this does a bunch of extra copies, but eh
                 _ = Encoding.UTF8.GetBytes(entry.FileName, entrySpan);
-                var mzpEntry = new HfaEntry(entrySpan, entry.CowEntry.NewSize, entry.CowEntry.NewOffset - dataOffset);
+                var mzpEntry = new HfaEntry(entrySpan, (uint)entry.CowEntry.NewSize, (uint)(entry.CowEntry.NewOffset - dataOffset));
                 MemoryMarshal.Write(entrySpan, mzpEntry);
 
                 result = Storage.Write(HeaderSize + (EntrySize * i), entrySpan);

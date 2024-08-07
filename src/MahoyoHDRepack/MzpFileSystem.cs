@@ -43,7 +43,7 @@ public sealed class MzpFileSystem : CopyOnWriteFileSystem
         [FieldOffset(6)]
         public readonly LEUInt16 SizeBytes;
 
-        public MzpEntry(uint size, uint offset)
+        public MzpEntry(long size, long offset)
         {
             var (sectors, bytes) = Math.DivRem(offset, SectorSize);
             bytes |= (sectors >> 4) & 0xf000u;
@@ -54,10 +54,10 @@ public sealed class MzpFileSystem : CopyOnWriteFileSystem
             SizeBytes.Value = (ushort)(size & 0xffffu);
         }
 
-        public uint Size => (uint)((((SizeSectors - 1) * SectorSize) & ~0xffffu) + SizeBytes.Value);
-        public uint Offset => ((SectorOffset + ((ByteOffset & 0xf000u) * 16)) * SectorSize) + (ByteOffset & 0xfffu);
+        public long Size => (((SizeSectors - 1) * SectorSize) & ~0xffffu) + SizeBytes.Value;
+        public long Offset => ((SectorOffset + ((ByteOffset & 0xf000u) * 16)) * SectorSize) + (ByteOffset & 0xfffu);
 
-        public CowEntry ToEntry(uint baseOffs) => new()
+        public CowEntry ToEntry(long baseOffs) => new()
         {
             Size = Size,
             Offset = Offset + baseOffs
@@ -112,13 +112,13 @@ public sealed class MzpFileSystem : CopyOnWriteFileSystem
             return ResultFs.InvalidFileSize.Value;
         }
 
-        var dataOffset = HeaderSize + (numEntries * EntrySize);
+        long dataOffset = HeaderSize + (numEntries * EntrySize);
         var entries = new CowEntry[numEntries];
         for (var i = 0; i < numEntries; i++)
         {
             result = ReadEntry(storage, i, out var mzpEntry);
             if (result.IsFailure()) return result.Miss();
-            entries[i] = mzpEntry.ToEntry((uint)dataOffset);
+            entries[i] = mzpEntry.ToEntry(dataOffset);
         }
 
         mzpFs.Reset(new MzpFileSystem(storageRef, storage, entries));
@@ -191,10 +191,10 @@ public sealed class MzpFileSystem : CopyOnWriteFileSystem
 
     protected override int GetEntryCount() => entries.Length;
     protected override ref CowEntry GetEntry(int i) => ref entries[i];
-    protected override uint GetDataOffset() => (uint)((entries.Length * EntrySize) + HeaderSize);
-    protected override uint AlignOffset(uint offset) => (offset + 15u) & ~0xfu; // each file is aligned to 16 bytes
+    protected override long GetDataOffset() => (entries.Length * EntrySize) + HeaderSize;
+    protected override long AlignOffset(long offset) => (offset + 15u) & ~0xfu; // each file is aligned to 16 bytes
 
-    protected override Result WriteHeader(IStorage storage, uint dataOffset)
+    protected override Result WriteHeader(IStorage storage, long dataOffset)
     {
         // first we write the MZP header
         Span<byte> hdrSpan = stackalloc byte[HeaderSize];

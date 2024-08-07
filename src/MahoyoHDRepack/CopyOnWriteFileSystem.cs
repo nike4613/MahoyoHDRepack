@@ -26,10 +26,10 @@ public abstract class CopyOnWriteFileSystem : IFileSystem
 
     protected struct CowEntry
     {
-        public uint Size;
-        public uint Offset;
-        internal uint NewSize;
-        internal uint NewOffset;
+        public long Size;
+        public long Offset;
+        internal long NewSize;
+        internal long NewOffset;
         internal MemoryStorage? CowStorage;
         internal CopyOnWriteStorage? Cow;
         internal FwStorage? Fw;
@@ -53,11 +53,11 @@ public abstract class CopyOnWriteFileSystem : IFileSystem
     }
 
     protected abstract int GetEntryCount();
-    protected abstract uint GetDataOffset();
-    protected abstract uint AlignOffset(uint offset);
+    protected abstract long GetDataOffset();
+    protected abstract long AlignOffset(long offset);
     protected abstract ref CowEntry GetEntry(int i);
 
-    protected abstract Result WriteHeader(IStorage storage, uint dataOffset);
+    protected abstract Result WriteHeader(IStorage storage, long dataOffset);
 
     protected override Result DoFlush()
     {
@@ -75,7 +75,7 @@ public abstract class CopyOnWriteFileSystem : IFileSystem
             // first, we want to update the size to the real size in CowStorage
             if (entry.Cow is { HasWritten: true })
             {
-                entry.NewSize = (uint)entry.CowStorage!.Size;
+                entry.NewSize = entry.CowStorage!.Size;
             }
             else
             {

@@ -13,6 +13,8 @@ internal static class FileScanner
     public static ReadOnlySpan<byte> Hfa => "HUNEXGGEFA10"u8;
     public static ReadOnlySpan<byte> LenZuCompressed => LenZuCompressorFile.ExpectHeader;
     public static ReadOnlySpan<byte> Bntx => "BNTX"u8;
+    public static ReadOnlySpan<byte> Jpeg => [0xff, 0xd8, 0xff, 0xe0];
+    public static ReadOnlySpan<byte> Png => [0x89, 0x50, 0x4e, 0x47];
 
 
     private const int MaxMagicBytes = 32;
@@ -31,6 +33,8 @@ internal static class FileScanner
         if (Matches(read, magic, Hfa)) return KnownFileTypes.Hfa;
         if (Matches(read, magic, LenZuCompressed)) return KnownFileTypes.LenZuCompressor;
         if (Matches(read, magic, Bntx)) return KnownFileTypes.Bntx;
+        if (Matches(read, magic, Jpeg)) return KnownFileTypes.Jpeg;
+        if (Matches(read, magic, Png)) return KnownFileTypes.Png;
 
         return KnownFileTypes.Unknown;
     }
@@ -75,4 +79,6 @@ public enum KnownFileTypes
     Hfa,
     LenZuCompressor,
     Bntx,
+    Jpeg,
+    Png,
 }

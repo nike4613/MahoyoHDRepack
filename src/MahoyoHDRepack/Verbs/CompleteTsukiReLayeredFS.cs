@@ -52,11 +52,14 @@ internal sealed class CompleteTsukiReLayeredFS
 
         var textProcessor = new DeepLunaTextProcessor();
 
-        // first pass: inject main script
+        // inject main script
         InjectMainScript(outRomfs.Get, romfs, tsukihimatesDir, secondLang, textProcessor);
 
-        // second pass: inject SYSMES_TEXT (and the rest of allui)
+        // inject allui
         InjectAllui(outRomfs.Get, romfs, tsukihimatesDir, secondLang, textProcessor);
+
+        // inject parts
+        InjectPartsImages(outRomfs.Get, romfs, tsukihimatesDir, secondLang);
 
         // once we've loaded all text, dump the fontinfo json
         Console.WriteLine($"Writing font info to {fontInfoJson}");
@@ -255,7 +258,9 @@ internal sealed class CompleteTsukiReLayeredFS
             Helpers.Assert(FileScanner.ProbeForFileType(decompressedTarget) is KnownFileTypes.Bntx);
 
             // pass off to the inner function
-            InjectIntoAlluiBntx(targetLanguage, decompressedTarget, candidateDir, targetNameClean);
+            _ = injectAlluiFileListOverride.TryGetValue(targetNameClean, out var explicitFileList);
+            _ = injectAlluiSkipFile.TryGetValue(targetNameClean, out var explicitSkipList);
+            InjectIntoBntx(targetLanguage, "allui", decompressedTarget, candidateDir, targetNameClean, explicitFileList, explicitSkipList);
 
             // then flush out the data
             decompressedTarget.Flush().ThrowIfFailure();
@@ -271,7 +276,7 @@ internal sealed class CompleteTsukiReLayeredFS
         ],
         ["MENU_PARTS"] = [
             ("flow_phasetitle", "flow_phasetitle"),
-            ("system_phasetitle_ja", "system_phasetitle"),
+            //("system_phasetitle_ja", "system_phasetitle"), // TODO: fix the alignment of system_phasetitle
             ("flow_thumb_all_nx", "flow_thumb_all"),
         ],
         ["SAVE_PARTS"] = [
@@ -291,9 +296,41 @@ internal sealed class CompleteTsukiReLayeredFS
         ]
     };
 
-    private static unsafe void InjectIntoAlluiBntx(GameLanguage targetLanguage, IFile targetFile, string fromPath, string nameClean)
+    private static void InjectPartsImages(IFileSystem outRomfs, IFileSystem romfs, DirectoryInfo tsukihimatesDir, GameLanguage targetLanguage)
     {
-        Console.WriteLine($"{fromPath} -> allui/{nameClean}");
+        using var partsPath = new LibHac.Fs.Path();
+        partsPath.Initialize("/parts.mrg".ToU8Span()).ThrowIfFailure();
+        _ = outRomfs.DeleteFile(partsPath);
+        partsPath.Initialize("/parts.hed".ToU8Span()).ThrowIfFailure();
+        _ = outRomfs.DeleteFile(partsPath);
+        partsPath.InitializeWithNormalization("/parts".ToU8Span().Value).ThrowIfFailure();
+        partsPath.Normalize(default).ThrowIfFailure();
+
+        MrgFileSystem.Read(romfs, partsPath, out var outParts).ThrowIfFailure();
+        Helpers.Assert(outParts is not null);
+        using var parts = outParts;
+
+        using UniqueRef<IFile> targetFile = default;
+        parts.OpenFile(ref targetFile.Ref, $"/{(int)targetLanguage + 1:x}".ToU8Span(), LibHac.Fs.OpenMode.ReadWrite).ThrowIfFailure();
+
+        using var realTargetFile = FileScanner.TryGetDecompressedFile(targetFile.Get);
+        Helpers.Assert(FileScanner.ProbeForFileType(realTargetFile) is KnownFileTypes.Bntx);
+
+        var partsDir = Path.Combine(tsukihimatesDir.FullName, "images", "parts", "00000001");
+        InjectIntoBntx(targetLanguage, "parts", realTargetFile, partsDir, $"{(int)targetLanguage + 1}", [
+            ("caution2_1920x1080", "caution2"),
+        ], null);
+
+        realTargetFile.Flush().ThrowIfFailure();
+        targetFile.Get.Flush().ThrowIfFailure();
+        parts.Flush().ThrowIfFailure();
+    }
+
+    private static unsafe void InjectIntoBntx(GameLanguage targetLanguage, string targetDir, IFile targetFile,
+        string fromPath, string nameClean,
+        (string FromFile, string IntoName)[]? filesList, HashSet<string>? skipNames)
+    {
+        Console.WriteLine($"{fromPath} -> {targetDir}/{nameClean}");
 
         var shiftJis = Encoding.GetEncoding("shift-jis");
 
@@ -320,7 +357,7 @@ internal sealed class CompleteTsukiReLayeredFS
         };
 
         // TODO: automate more of this, instead of *just* deferring to the hardcoded lists
-        if (injectAlluiFileListOverride.TryGetValue(nameClean, out var filesList))
+        if (filesList is not null)
         {
             foreach (var (fromFile, intoName) in filesList)
             {
@@ -345,8 +382,6 @@ internal sealed class CompleteTsukiReLayeredFS
         }
         else
         {
-            _ = injectAlluiSkipFile.TryGetValue(nameClean, out var skipNames);
-
             // scan for candidates ourselves
             foreach (var filename in Directory.EnumerateFiles(fromPath, "*.png", SearchOption.TopDirectoryOnly))
             {
@@ -449,6 +484,7 @@ internal sealed class CompleteTsukiReLayeredFS
         if (tex.Name == "system_phasetitle_en")
         {
             // special case english, because of course
+            // TODO: this is actually wrong too! These aren't actually equal-sized columns, but instead some other garbage
             imgToImport = FixupColumnedAtlas(imgToImport, (int)tex.Width, 3, false);
 #if DEBUG
             imgToImport.SaveAsPng("system_phasetitle_fixed.png");

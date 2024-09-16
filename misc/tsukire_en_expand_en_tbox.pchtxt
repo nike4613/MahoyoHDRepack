@@ -1,7 +1,6 @@
 @nsobid-9AFB5D182FCEF75DFDFC20183A60CD3F80FB767B
 
 @flag offset_shift 0x100
-@flag print_values
 
 // ATTEMPT TO REMOVE SPECIALIZATION OF ENGLISH LANGUAGE
 
@@ -26,4 +25,10 @@
 // Modified: 48 13 9a 1a    csel w8,w26,w26,ne
 @enabled
 //0008124c    48139a1a
+@disabled
+
+// Original: 34 11 88 1a    csel w20,w9,w8,ne
+// Modified: 14 11 88 1a    csel w20,w8,w8,ne
+@enabled
+//0002908c    1411881a
 @disabled

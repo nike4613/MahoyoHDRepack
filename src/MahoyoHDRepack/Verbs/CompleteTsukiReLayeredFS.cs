@@ -20,17 +20,18 @@ using System.Buffers;
 using System.Diagnostics;
 using Ryujinx.Common.Memory;
 using System.Security.Cryptography;
-using LibHac.Bcat;
 using SixLabors.ImageSharp.Formats.Jpeg;
 using SixLabors.ImageSharp.Formats.Png;
 using System.Linq;
 using CommunityToolkit.HighPerformance;
-using System.IO.Enumeration;
 using SixLabors.ImageSharp.Processing;
+using System.Text.RegularExpressions;
+using SixLabors.ImageSharp.Processing.Processors.Convolution;
+using System.Globalization;
 
 namespace MahoyoHDRepack.Verbs;
 
-internal sealed class CompleteTsukiReLayeredFS
+internal sealed partial class CompleteTsukiReLayeredFS
 {
     private static readonly string ImageCacheDir = Path.Combine(Path.GetTempPath(), "MahoyoHDRepack", "tsukire");
 
@@ -426,7 +427,7 @@ internal sealed class CompleteTsukiReLayeredFS
             var nameUpper = Path.GetFileNameWithoutExtension(filePath).ToUpperInvariant();
 
             // lets load the file once
-            using var importImage = Image.Load(filePath).CloneAs<Rgba32>();
+            using var importImage = GetAllpacImageToImport(filePath);
 
             string? matchedName = null;
             var didFindFileMatch = false;
@@ -472,124 +473,10 @@ internal sealed class CompleteTsukiReLayeredFS
                 matchedName = $"{pack}/{nameUpper}";
                 Console.WriteLine($"{filePath} -> {pack}/{nameUpper}");
 
-                // now operate based on the kind
-                switch (fileKind)
+                if (!DoProcessImage(targetLanguage, filePath, importImage, decompressedFile, fileKind))
                 {
-                    case KnownFileTypes.Png:
-                    case KnownFileTypes.Jpeg:
-                        {
-                            using var existingImage = Image.Load(decompressedFile.AsStream()).CloneAs<Rgba32>();
-                            using var replacementImage = GetInjectedAllpacImage(targetLanguage, existingImage, importImage);
-                            if (replacementImage is null)
-                            {
-                                failedFiles.Add((filePath, matchedName));
-                                continue;
-                            }
-
-                            decompressedFile.SetSize(0).ThrowIfFailure();
-                            using var outputStream = new ResizingStorageStream(decompressedFile.AsStorage(), skipFlush: true);
-                            if (fileKind is KnownFileTypes.Png)
-                            {
-                                var pngEncoder = new PngEncoder()
-                                {
-                                    //CompressionLevel = PngCompressionLevel.BestCompression
-                                };
-                                replacementImage.SaveAsPng(outputStream);
-                            }
-                            else
-                            {
-                                var jpegEncoder = new JpegEncoder()
-                                {
-                                    Quality = 100,
-                                    //ColorType = JpegColorType.YCbCrRatio444,
-                                };
-                                replacementImage.SaveAsJpeg(outputStream, jpegEncoder);
-                            }
-                            outputStream.ForceFlush();
-                        }
-                        break;
-
-                    case KnownFileTypes.Bntx:
-                        {
-                            var shiftJis = Encoding.GetEncoding("shift-jis");
-
-                            // load the bntx
-                            var bntx = new BntxFile(decompressedFile.AsStream(), shiftJis);
-
-                            Helpers.Assert(bntx.Textures.Count == 1);
-                            var tex = bntx.Textures[0];
-                            Helpers.Assert(tex.Format is Syroot.NintenTools.NSW.Bntx.GFX.SurfaceFormat.BC7_SRGB);
-                            Helpers.Assert(tex.Depth == 1);
-                            Helpers.Assert(tex.Dim is Syroot.NintenTools.NSW.Bntx.GFX.Dim.Dim2D);
-                            Helpers.Assert(tex is
-                            {
-                                ChannelAlpha: Syroot.NintenTools.NSW.Bntx.GFX.ChannelType.Alpha,
-                                ChannelBlue: Syroot.NintenTools.NSW.Bntx.GFX.ChannelType.Blue,
-                                ChannelGreen: Syroot.NintenTools.NSW.Bntx.GFX.ChannelType.Green,
-                                ChannelRed: Syroot.NintenTools.NSW.Bntx.GFX.ChannelType.Red,
-                            });
-                            Helpers.Assert(tex.TileMode is Syroot.NintenTools.NSW.Bntx.GFX.TileMode.Default);
-
-                            var originalSizeInfo = SizeCalculator.GetBlockLinearTextureSize(
-                                (int)tex.Width, (int)tex.Height, 1,
-                                levels: 1,
-                                layers: 1,
-                                blockWidth: BC7Encoder.BlockWidth,
-                                blockHeight: BC7Encoder.BlockHeight,
-                                bytesPerPixel: BC7Encoder.BlockSizeBytes, // actually bytes per block
-                                gobBlocksInY: 1 << (int)tex.BlockHeightLog2,
-                                gobBlocksInZ: 1,
-                                gobBlocksInTileX: 1);
-
-                            // linearize
-                            using var linearized = LayoutConverter.ConvertBlockLinearToLinear(
-                                (int)tex.Width, (int)tex.Height, 1, 1, 1, 1,
-                                blockWidth: BC7Encoder.BlockWidth,
-                                blockHeight: BC7Encoder.BlockHeight,
-                                bytesPerPixel: BC7Encoder.BlockSizeBytes,
-                                gobBlocksInY: 1 << (int)tex.BlockHeightLog2,
-                                gobBlocksInZ: 1,
-                                gobBlocksInTileX: 1,
-                                originalSizeInfo,
-                                tex.TextureData.Single().Single());
-
-                            // then decode
-                            var decoded = BCnDecoder.DecodeBC7(linearized.Memory.Span,
-                                (int)tex.Width, (int)tex.Height, 1, 1, 1);
-
-                            // then adopt the image
-                            using var originalImage = Image.WrapMemory<Rgba32>(decoded, (int)tex.Width, (int)tex.Height);
-                            // compute the replacement, however that needs to be done
-                            using var replacementImage = GetInjectedAllpacImage(targetLanguage, originalImage, importImage);
-                            if (replacementImage is null)
-                            {
-                                failedFiles.Add((filePath, matchedName));
-                                continue;
-                            }
-
-                            // now inject it into the texture
-                            InjectIntoTex(tex, replacementImage, filePath);
-
-                            // note: we use skipFlush because the BNTX writer does a *lot* of flushing, which in turn goes through our compression logic
-                            // over and over again
-                            decompressedFile.SetSize(0).ThrowIfFailure(); // clear the file first
-                            using var bntxSaveStream = new ResizingStorageStream(decompressedFile.AsStorage(), skipFlush: true);
-
-                            // saving for some ungodly reason writes console output, so suppress that
-                            var origOut = Console.Out;
-                            try
-                            {
-                                Console.SetOut(TextWriter.Null);
-                                bntx.Save(bntxSaveStream, shiftJis);
-                            }
-                            finally
-                            {
-                                Console.SetOut(origOut);
-                            }
-
-                            bntxSaveStream.ForceFlush(); // once we've finished, actually force a flush through
-                        }
-                        break;
+                    failedFiles.Add((filePath, matchedName));
+                    continue;
                 }
 
                 filesInjected++;
@@ -629,9 +516,239 @@ internal sealed class CompleteTsukiReLayeredFS
         Console.WriteLine("------------------------------------------------------------");
     }
 
+    [GeneratedRegex(@"^([a-zA-Z0-9]+)_(\d+)_(\d+)$", RegexOptions.CultureInvariant)]
+    private static partial Regex GetFileMatchRegex();
+
+    private static Image<Rgba32> GetAllpacImageToImport(string filePath)
+    {
+        Image<Rgba32> result;
+
+        var filename = Path.GetFileNameWithoutExtension(filePath);
+        var match = GetFileMatchRegex().Match(filename);
+        if (match.Success)
+        {
+            // this is an image which is supposed to be a bokeh blur. The images in the Tsukihimates repo are actually all wrong,
+            // so we can do it better by directly reading and modifying the actual source. Note that this still requires the variants
+            // to have images in the directory; their content is just ignored.
+            var fileBaseName = match.Groups[1].Value;
+            var origPath = Path.Combine(Path.GetDirectoryName(filePath)!, $"{fileBaseName}{Path.GetExtension(filePath)}");
+            var xBlurAmt = int.Parse(match.Groups[2].Value, CultureInfo.InvariantCulture);
+            var yBlurAmt = int.Parse(match.Groups[3].Value, CultureInfo.InvariantCulture);
+
+            if (!File.Exists(origPath))
+            {
+                // file doesn't exist verbatim in the same folder, do a directory search from above
+                Console.WriteLine($"WRN: Could not find {origPath} when processing {filePath}");
+
+                origPath = null;
+                foreach (var file in Directory.EnumerateFiles(
+                    Path.Combine(Path.GetDirectoryName(filePath)!, ".."),
+                    $"{fileBaseName}.*",
+                    new EnumerationOptions()
+                    {
+                        MatchType = MatchType.Simple,
+                        RecurseSubdirectories = true,
+                        MatchCasing = MatchCasing.CaseInsensitive,
+                    }))
+                {
+                    if (Path.GetFileNameWithoutExtension(file).Equals(fileBaseName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        origPath = file;
+                        break;
+                    }
+                }
+
+                if (origPath is null)
+                {
+                    Console.WriteLine($"ERR: Could not replacement, falling back to default load");
+                    return Image.Load(filePath).CloneAs<Rgba32>();
+                }
+                else
+                {
+                    Console.WriteLine($"INF: Found {origPath} to use as base instead");
+                }
+            }
+
+            using var origImage = Image.Load(origPath).CloneAs<Rgba32>();
+            result = ExpandAndBokehBlur(origImage, xBlurAmt, yBlurAmt);
+
+#if DEBUG
+            result.SaveAsPng(Path.GetFileName(filePath));
+#endif
+        }
+        else
+        {
+            // this is an image that should be injected as-is. Just read it directly.
+            result = Image.Load(filePath).CloneAs<Rgba32>();
+        }
+
+        return result;
+    }
+
+    private static Image<Rgba32> ExpandAndBokehBlur(Image<Rgba32> srcImage, int xBlur, int yBlur)
+    {
+        // the image is grown in each dimension by the next multiple of 8 above the blur amount on each side
+        // (actually 8 on each side)
+
+        // note: whatever determined this for the game is doing this garbage...
+        var xGrowth = (((xBlur + 1) / 8) + 1) * 8 * 2;
+        var yGrowth = (((yBlur + 1) / 8) + 1) * 8 * 2;
+
+        // note: Bokeh only supports a radius
+        //Helpers.Assert(xBlur == yBlur);
+        //Helpers.Assert(xGrowth == yGrowth);
+        // I'd like to have the above assert, but some of the images actually trip it
+        yGrowth = xGrowth;
+
+        // set up the resize options
+        var resizeOptions = new ResizeOptions()
+        {
+            Mode = ResizeMode.BoxPad,
+            Sampler = KnownResamplers.Box,
+            Position = AnchorPositionMode.Center,
+            Size = srcImage.Size() + new SixLabors.ImageSharp.Size(xGrowth, yGrowth),
+            PadColor = Color.Transparent,
+        };
+
+        // apply operations
+        var result = srcImage.Clone(ctx => ctx.Resize(resizeOptions));
+        // note: a gamma of 1.0 is wrong, but it's what the JP uses, so oh well
+        result.Mutate(ctx => ctx.BokehBlur(xBlur, BokehBlurProcessor.DefaultComponents, 1.0f));
+        return result;
+    }
+
+    private static bool DoProcessImage(GameLanguage targetLanguage, string filePath, Image<Rgba32> importImage, IFile decompressedFile, KnownFileTypes fileKind)
+    {
+        // now operate based on the kind
+        switch (fileKind)
+        {
+            case KnownFileTypes.Png:
+            case KnownFileTypes.Jpeg:
+                {
+                    using var existingImage = Image.Load(decompressedFile.AsStream()).CloneAs<Rgba32>();
+                    using var replacementImage = GetInjectedAllpacImage(targetLanguage, existingImage, importImage);
+                    if (replacementImage is null)
+                    {
+                        return false;
+                    }
+
+                    decompressedFile.SetSize(0).ThrowIfFailure();
+                    using var outputStream = new ResizingStorageStream(decompressedFile.AsStorage(), skipFlush: true);
+                    if (fileKind is KnownFileTypes.Png)
+                    {
+                        var pngEncoder = new PngEncoder()
+                        {
+                            //CompressionLevel = PngCompressionLevel.BestCompression
+                        };
+                        replacementImage.SaveAsPng(outputStream);
+                    }
+                    else
+                    {
+                        var jpegEncoder = new JpegEncoder()
+                        {
+                            Quality = 100,
+                            //ColorType = JpegColorType.YCbCrRatio444,
+                        };
+                        replacementImage.SaveAsJpeg(outputStream, jpegEncoder);
+                    }
+                    outputStream.ForceFlush();
+                }
+                break;
+
+            case KnownFileTypes.Bntx:
+                {
+                    var shiftJis = Encoding.GetEncoding("shift-jis");
+
+                    // load the bntx
+                    var bntx = new BntxFile(decompressedFile.AsStream(), shiftJis);
+
+                    Helpers.Assert(bntx.Textures.Count == 1);
+                    var tex = bntx.Textures[0];
+                    Helpers.Assert(tex.Format is Syroot.NintenTools.NSW.Bntx.GFX.SurfaceFormat.BC7_SRGB);
+                    Helpers.Assert(tex.Depth == 1);
+                    Helpers.Assert(tex.Dim is Syroot.NintenTools.NSW.Bntx.GFX.Dim.Dim2D);
+                    Helpers.Assert(tex is
+                    {
+                        ChannelAlpha: Syroot.NintenTools.NSW.Bntx.GFX.ChannelType.Alpha,
+                        ChannelBlue: Syroot.NintenTools.NSW.Bntx.GFX.ChannelType.Blue,
+                        ChannelGreen: Syroot.NintenTools.NSW.Bntx.GFX.ChannelType.Green,
+                        ChannelRed: Syroot.NintenTools.NSW.Bntx.GFX.ChannelType.Red,
+                    });
+                    Helpers.Assert(tex.TileMode is Syroot.NintenTools.NSW.Bntx.GFX.TileMode.Default);
+
+                    var originalSizeInfo = SizeCalculator.GetBlockLinearTextureSize(
+                        (int)tex.Width, (int)tex.Height, 1,
+                        levels: 1,
+                        layers: 1,
+                        blockWidth: BC7Encoder.BlockWidth,
+                        blockHeight: BC7Encoder.BlockHeight,
+                        bytesPerPixel: BC7Encoder.BlockSizeBytes, // actually bytes per block
+                        gobBlocksInY: 1 << (int)tex.BlockHeightLog2,
+                        gobBlocksInZ: 1,
+                        gobBlocksInTileX: 1);
+
+                    // linearize
+                    using var linearized = LayoutConverter.ConvertBlockLinearToLinear(
+                        (int)tex.Width, (int)tex.Height, 1, 1, 1, 1,
+                        blockWidth: BC7Encoder.BlockWidth,
+                        blockHeight: BC7Encoder.BlockHeight,
+                        bytesPerPixel: BC7Encoder.BlockSizeBytes,
+                        gobBlocksInY: 1 << (int)tex.BlockHeightLog2,
+                        gobBlocksInZ: 1,
+                        gobBlocksInTileX: 1,
+                        originalSizeInfo,
+                        tex.TextureData.Single().Single());
+
+                    // then decode
+                    var decoded = BCnDecoder.DecodeBC7(linearized.Memory.Span,
+                        (int)tex.Width, (int)tex.Height, 1, 1, 1);
+
+                    // then adopt the image
+                    using var originalImage = Image.WrapMemory<Rgba32>(decoded, (int)tex.Width, (int)tex.Height);
+                    // compute the replacement, however that needs to be done
+                    using var replacementImage = GetInjectedAllpacImage(targetLanguage, originalImage, importImage);
+                    if (replacementImage is null)
+                    {
+                        return false;
+                    }
+
+                    // now inject it into the texture
+                    InjectIntoTex(tex, replacementImage, filePath);
+
+                    // note: we use skipFlush because the BNTX writer does a *lot* of flushing, which in turn goes through our compression logic
+                    // over and over again
+                    decompressedFile.SetSize(0).ThrowIfFailure(); // clear the file first
+                    using var bntxSaveStream = new ResizingStorageStream(decompressedFile.AsStorage(), skipFlush: true);
+
+                    // saving for some ungodly reason writes console output, so suppress that
+                    var origOut = Console.Out;
+                    try
+                    {
+                        Console.SetOut(TextWriter.Null);
+                        bntx.Save(bntxSaveStream, shiftJis);
+                    }
+                    finally
+                    {
+                        Console.SetOut(origOut);
+                    }
+
+                    bntxSaveStream.ForceFlush(); // once we've finished, actually force a flush through
+                }
+                break;
+        }
+
+        return true;
+    }
+
+    private enum TargetImageKind
+    {
+        Autodetect,
+        NotLocalized,
+        StackedByLanguage,
+    }
+
     private static Image<Rgba32>? GetInjectedAllpacImage(GameLanguage targetLanguage, Image<Rgba32> originalImage, Image<Rgba32> injectImage)
     {
-
         if (originalImage.Width != injectImage.Width)
         {
             // TODO: compare aspect ratios of injectable segment somehow

@@ -16,6 +16,9 @@
 
     <ServerGarbageCollection>true</ServerGarbageCollection>
     <GarbageCollectionAdaptationMode>1</GarbageCollectionAdaptationMode>
+
+    <!-- Disable "Dispose objects before losing scope" because it utterly chokes on this project -->
+    <NoWarn>$(NoWarn);CA2000</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

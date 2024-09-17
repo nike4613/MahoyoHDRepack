@@ -28,6 +28,7 @@ using SixLabors.ImageSharp.Processing;
 using System.Text.RegularExpressions;
 using SixLabors.ImageSharp.Processing.Processors.Convolution;
 using System.Globalization;
+using SixLabors.ImageSharp.Processing.Processors.Transforms;
 
 namespace MahoyoHDRepack.Verbs;
 
@@ -626,7 +627,7 @@ internal sealed partial class CompleteTsukiReLayeredFS
             case KnownFileTypes.Jpeg:
                 {
                     using var existingImage = Image.Load(decompressedFile.AsStream()).CloneAs<Rgba32>();
-                    using var replacementImage = GetInjectedAllpacImage(targetLanguage, existingImage, importImage);
+                    using var replacementImage = GetInjectedAllpacImage(Path.GetFileNameWithoutExtension(filePath), targetLanguage, existingImage, importImage);
                     if (replacementImage is null)
                     {
                         return false;
@@ -706,7 +707,7 @@ internal sealed partial class CompleteTsukiReLayeredFS
                     // then adopt the image
                     using var originalImage = Image.WrapMemory<Rgba32>(decoded, (int)tex.Width, (int)tex.Height);
                     // compute the replacement, however that needs to be done
-                    using var replacementImage = GetInjectedAllpacImage(targetLanguage, originalImage, importImage);
+                    using var replacementImage = GetInjectedAllpacImage(Path.GetFileNameWithoutExtension(filePath), targetLanguage, originalImage, importImage);
                     if (replacementImage is null)
                     {
                         return false;
@@ -740,6 +741,8 @@ internal sealed partial class CompleteTsukiReLayeredFS
         return true;
     }
 
+    private const int KnownLanguageCount = 4;
+
     private enum TargetImageKind
     {
         Autodetect,
@@ -747,91 +750,200 @@ internal sealed partial class CompleteTsukiReLayeredFS
         StackedByLanguage,
     }
 
-    private static Image<Rgba32>? GetInjectedAllpacImage(GameLanguage targetLanguage, Image<Rgba32> originalImage, Image<Rgba32> injectImage)
+    private static readonly Dictionary<string, TargetImageKind> fileKnownImageKinds = new(StringComparer.OrdinalIgnoreCase)
     {
+        // these images don't follow the usual pattern, and need to be tweaked
+        ["img2582"] = TargetImageKind.StackedByLanguage,
+        ["img2583"] = TargetImageKind.StackedByLanguage,
+        ["img2584"] = TargetImageKind.StackedByLanguage,
+        ["img2585"] = TargetImageKind.StackedByLanguage,
+        ["img2586"] = TargetImageKind.StackedByLanguage,
+    };
+
+    private static readonly Dictionary<string, AnchorPositionMode> fileKnownResizeAnchors = new(StringComparer.OrdinalIgnoreCase)
+    {
+        // these images are actually text, so when changing their size, we want to make sure to left-align
+        // existing in this dict also means that we don't actually perform an aspect-preserving resize, instead just expanding canvas
+        ["img2629"] = AnchorPositionMode.Left,
+        ["img2630"] = AnchorPositionMode.Left,
+    };
+
+    private static Image<Rgba32>? GetInjectedAllpacImage(string fileName, GameLanguage targetLanguage, Image<Rgba32> originalImage, Image<Rgba32> injectImage)
+    {
+        var knownKind = fileKnownImageKinds.TryGetValue(fileName, out var kind) ? kind : TargetImageKind.Autodetect;
+
         if (originalImage.Width != injectImage.Width)
         {
-            // TODO: compare aspect ratios of injectable segment somehow
-            // depending on the aspect ratios, we might want to do more fixups
-            if (originalImage.Width + injectImage.Height < injectImage.Width)
+            if (fileKnownResizeAnchors.TryGetValue(fileName, out var anchor))
             {
-                Console.WriteLine($"ERR: Images have drastically different widths; not injecting");
-                return null;
+                // this is a known anchor, expand to width using the appropriate anchor
+                var resizeOptions = new ResizeOptions()
+                {
+                    Mode = ResizeMode.BoxPad,
+                    PadColor = Color.Transparent,
+                    Position = anchor,
+                    Size = new(originalImage.Width, injectImage.Height)
+                };
+
+                injectImage.Mutate(ctx => ctx.Resize(resizeOptions));
             }
-
-            Console.WriteLine($"WRN: Images are different widths! original:{originalImage.Width}x{originalImage.Height}, injected:{injectImage.Width}x{injectImage.Height}");
-            Console.WriteLine($"     Resizing, keeping aspect ratio, then trimming off top and bottom evenly to match original height");
-
-            SizeF injectImageSize = injectImage.Size();
-            var scaleFactor = originalImage.Width / injectImageSize.Width;
-            var targetImageSize = SixLabors.ImageSharp.Size.Round(injectImageSize * scaleFactor);
-            Helpers.Assert(targetImageSize.Width == originalImage.Width);
-
-            var resizeOptions = new ResizeOptions()
+            else if (knownKind is TargetImageKind.Autodetect)
             {
-                Mode = ResizeMode.Crop,
-                Sampler = KnownResamplers.MitchellNetravali,
-                Position = AnchorPositionMode.Center,
-                Size = new(originalImage.Width, injectImage.Height),
-                TargetRectangle = new(default, targetImageSize)
-            };
+                // TODO: compare aspect ratios of injectable segment somehow
+                // depending on the aspect ratios, we might want to do more fixups
+                if (originalImage.Width + injectImage.Height < injectImage.Width)
+                {
+                    Console.WriteLine($"ERR: Images have drastically different widths; not injecting");
+                    return null;
+                }
 
-            injectImage.Mutate(ctx => ctx.Resize(resizeOptions));
+                Console.WriteLine($"WRN: Images are different widths! original:{originalImage.Width}x{originalImage.Height}, injected:{injectImage.Width}x{injectImage.Height}");
+                Console.WriteLine($"     Resizing, keeping aspect ratio, then trimming off top and bottom evenly to match original height");
+
+                SizeF injectImageSize = injectImage.Size();
+                var scaleFactor = originalImage.Width / injectImageSize.Width;
+                var targetImageSize = SixLabors.ImageSharp.Size.Round(injectImageSize * scaleFactor);
+                Helpers.Assert(targetImageSize.Width == originalImage.Width);
+
+                var resizeOptions = new ResizeOptions()
+                {
+                    Mode = ResizeMode.Crop,
+                    Sampler = KnownResamplers.MitchellNetravali,
+                    Position = AnchorPositionMode.Center,
+                    Size = new(originalImage.Width, injectImage.Height),
+                    TargetRectangle = new(default, targetImageSize)
+                };
+
+                injectImage.Mutate(ctx => ctx.Resize(resizeOptions));
+            }
         }
 
-        if (originalImage.Height == injectImage.Height)
+        if (kind is TargetImageKind.NotLocalized
+            || (kind is TargetImageKind.Autodetect && originalImage.Height == injectImage.Height))
         {
             // the images are the same size, there's no issue, just inject it normally
             return injectImage;
         }
 
-        var pixelsOff = originalImage.Height % injectImage.Height;
-        var maxIndex = originalImage.Height / injectImage.Height;
-        // if we were off by some number of pixels, duplicate the top/bottom rows to fit, preferring bottom
-        var dupPixelsTotal = pixelsOff / maxIndex; // should round properly
-
-        if (pixelsOff > 8) // if we're (arbitrarily) off by more than 8 pixels, skip
+        if (kind is TargetImageKind.StackedByLanguage)
         {
-            Console.WriteLine($"ERR: Original image is not a multiple of injected height! original:{originalImage.Width}x{originalImage.Height}, injected:{injectImage.Width}x{injectImage.Height}");
-            return null;
+            // we know that the image is localized, perform a specialized operation based on that information
+            var origLangHeight = originalImage.Height / KnownLanguageCount;
+
+            Helpers.Assert((int)targetLanguage < KnownLanguageCount);
+
+            // split the source image into the localized parts
+            var images = new Image<Rgba32>[KnownLanguageCount];
+            for (var i = 0; i < KnownLanguageCount; i++)
+            {
+                if (i == (int)targetLanguage)
+                {
+                    images[i] = injectImage;
+                }
+                else
+                {
+                    images[i] = originalImage.Clone(ctx => ctx.Crop(new(0, i * origLangHeight, originalImage.Width, origLangHeight)));
+                }
+            }
+
+            // compute new size
+            var maxItemHeight = int.Max(origLangHeight, injectImage.Height);
+            var maxItemWidth = int.Max(originalImage.Width, injectImage.Width);
+
+            // pad all images out to the same target size
+            var resizeOptions = new ResizeOptions()
+            {
+                Mode = ResizeMode.BoxPad,
+                PadColor = Color.Transparent,
+                Position = AnchorPositionMode.Center,
+                Size = new(maxItemWidth, maxItemHeight),
+            };
+
+            foreach (var img in images)
+            {
+                img.Mutate(ctx => ctx.Resize(resizeOptions));
+            }
+
+            // resize our original container
+            var resultImage = new Image<Rgba32>(maxItemWidth, maxItemHeight * images.Length);
+
+            // and insert the modified images back in
+            for (var i = 0; i < images.Length; i++)
+            {
+                var fromImg = images[i];
+                resultImage.ProcessPixelRows(fromImg, (targetRows, sourceRows) =>
+                {
+                    for (var j = 0; j < sourceRows.Height; j++)
+                    {
+                        var tgtRowIdx = (maxItemHeight * i) + j;
+                        sourceRows.GetRowSpan(j).CopyTo(targetRows.GetRowSpan(tgtRowIdx));
+                    }
+                });
+            }
+
+            // clean up our temporary images
+            foreach (var img in images)
+            {
+                img.Dispose();
+            }
+
+#if DEBUG
+            resultImage.SaveAsPng($"{fileName}.png");
+#endif
+
+            // and we're done
+            return resultImage;
         }
-
-        if (maxIndex <= (int)targetLanguage)
+        else
         {
-            Console.WriteLine($"ERR: Requested language ({targetLanguage}={(int)targetLanguage}) is out of bounds for image! original:{originalImage.Width}x{originalImage.Height}, max: {maxIndex}");
-            return null;
+            var pixelsOff = originalImage.Height % injectImage.Height;
+            var maxIndex = originalImage.Height / injectImage.Height;
+            // if we were off by some number of pixels, duplicate the top/bottom rows to fit, preferring bottom
+            var dupPixelsTotal = pixelsOff / maxIndex; // should round properly
+
+            if (pixelsOff > 8) // if we're (arbitrarily) off by more than 8 pixels, skip
+            {
+                Console.WriteLine($"ERR: Original image is not a multiple of injected height! original:{originalImage.Width}x{originalImage.Height}, injected:{injectImage.Width}x{injectImage.Height}");
+                return null;
+            }
+
+            if (maxIndex <= (int)targetLanguage)
+            {
+                Console.WriteLine($"ERR: Requested language ({targetLanguage}={(int)targetLanguage}) is out of bounds for image! original:{originalImage.Width}x{originalImage.Height}, max: {maxIndex}");
+                return null;
+            }
+
+            var voffset = (injectImage.Height + dupPixelsTotal) * (int)targetLanguage;
+            var dupPixelsTop = dupPixelsTotal >> 1;
+            var dupPixelsBottom = (dupPixelsTotal >> 1) | (dupPixelsTotal & 1);
+
+            // after this, we don't need originalImage anymore, so just modify it
+            originalImage.ProcessPixelRows(injectImage, (original, inject) =>
+            {
+                for (var i = 0; i < dupPixelsTop; i++)
+                {
+                    var fromRow = inject.GetRowSpan(0);
+                    var toRow = original.GetRowSpan(voffset + i);
+                    fromRow.CopyTo(toRow);
+                }
+
+                for (var i = 0; i < inject.Height; i++)
+                {
+                    var fromRow = inject.GetRowSpan(i);
+                    var toRow = original.GetRowSpan(voffset + dupPixelsTop + i);
+                    fromRow.CopyTo(toRow);
+                }
+
+                for (var i = 0; i < dupPixelsBottom; i++)
+                {
+                    var fromRow = inject.GetRowSpan(inject.Height - 1);
+                    var toRow = original.GetRowSpan(voffset + dupPixelsTop + inject.Height + i);
+                    fromRow.CopyTo(toRow);
+                }
+            });
+
+            return originalImage;
         }
-
-        var voffset = (injectImage.Height + dupPixelsTotal) * (int)targetLanguage;
-        var dupPixelsTop = dupPixelsTotal >> 1;
-        var dupPixelsBottom = (dupPixelsTotal >> 1) | (dupPixelsTotal & 1);
-
-        // after this, we don't need originalImage anymore, so just modify it
-        originalImage.ProcessPixelRows(injectImage, (original, inject) =>
-        {
-            for (var i = 0; i < dupPixelsTop; i++)
-            {
-                var fromRow = inject.GetRowSpan(0);
-                var toRow = original.GetRowSpan(voffset + i);
-                fromRow.CopyTo(toRow);
-            }
-
-            for (var i = 0; i < inject.Height; i++)
-            {
-                var fromRow = inject.GetRowSpan(i);
-                var toRow = original.GetRowSpan(voffset + dupPixelsTop + i);
-                fromRow.CopyTo(toRow);
-            }
-
-            for (var i = 0; i < dupPixelsBottom; i++)
-            {
-                var fromRow = inject.GetRowSpan(inject.Height - 1);
-                var toRow = original.GetRowSpan(voffset + dupPixelsTop + inject.Height + i);
-                fromRow.CopyTo(toRow);
-            }
-        });
-
-        return originalImage;
     }
 
     private static unsafe void InjectIntoBntx(GameLanguage targetLanguage, string targetDir, IFile targetFile,
